@@ -1,328 +1,234 @@
-<<<<<<< HEAD
-# MRM Billing Data Entry Application
+﻿# MRM Royalty Commission Accounting
 
-A full-stack React application for Music Rights Management (MRM) billing data entry with MongoDB backend storage.
+A full-stack billing and royalty commission management system built for **Music Rights Management (MRM)**. Track client royalties across IPRS, PRS, ISAMRA, ASCAP, SoundExchange, and PPL — with automated commission calculations, GST invoicing, receipt tracking, and outstanding balance management.
+
+![Tech Stack](https://img.shields.io/badge/React-18-blue?logo=react) ![Node.js](https://img.shields.io/badge/Node.js-Express-green?logo=node.js) ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-brightgreen?logo=mongodb) ![License](https://img.shields.io/badge/License-ISC-yellow)
+
+---
 
 ## Features
 
-- **Client Management**: Add, edit, and remove clients with customizable service fees
-- **Monthly Billing Entry**: Enter royalty income from various sources (IPRS, PRS, Sound Exchange, ISAMRA, ASCAP, PPL)
-- **Auto-Calculations**: Automatic calculation of commissions, GST, and total invoices
-- **Financial Year Support**: Configurable financial year (April to March)
-- **Currency Conversion**: GBP to INR conversion with customizable exchange rates
-- **Draft & Submit**: Save entries as drafts or submit them
-- **Reports**: View all billing entries with status tracking
+### Core Billing
+- **Multi-source Royalty Tracking** — IPRS, PRS (GBP→INR conversion), SoundExchange, ISAMRA, ASCAP, PPL
+- **Auto Commission Calculation** — Configurable per-client commission rates with automatic computation
+- **GST & Invoice Management** — 18% GST calculation, current + previous outstanding invoicing
+- **Receipt & TDS Tracking** — Monthly payment receipts and TDS deductions
+- **Outstanding Balance** — Monthly and total outstanding with automatic carry-forward across months
+
+### Client Management
+- **216+ Client Database** — Client master with type, commission rate, and royalty source flags
+- **Client Types** — Royalty clients, Retainer clients, In-House clients
+- **Search & Filter** — Quick search across all clients by name or ID
+
+### Reports & Analytics
+- **Dashboard** — Summary of total commissions, outstanding, entries by status
+- **Commission Report** — Detailed commission breakdown by client and month
+- **GST & Invoice Report** — Invoice tracking with GST calculations
+- **Receipts & TDS Report** — Payment and TDS summary
+- **Outstanding Report** — Client-wise outstanding balances
+- **Client Master** — Full client listing with status and rates
+- **Export** — Data export functionality
+
+### Auth & Security
+- **JWT Authentication** — Access + refresh token system with auto-renewal
+- **Role-based Access** — Admin and user roles
+- **Email Verification** — New user email verification flow
+- **Password Reset** — Secure password reset via email
+
+### Financial Year
+- **FY 2025-2026** — April to March financial year tracking
+- **Month-wise Entry** — Individual billing entries per client per month
+- **Draft/Submitted Status** — Entry lifecycle management with edit controls
+
+---
 
 ## Tech Stack
 
-- **Frontend**: React 18 with Hooks
-- **Backend**: Node.js with Express
-- **Database**: MongoDB with Mongoose ODM
-- **Styling**: Custom CSS (dark theme)
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18, Context API, Axios |
+| **Backend** | Node.js, Express.js |
+| **Database** | MongoDB Atlas (Mongoose ODM) |
+| **Auth** | JWT (Access + Refresh tokens), bcryptjs |
+| **Email** | Nodemailer |
+| **Deployment** | Vercel (Client), Render/Railway (Server) |
+
+---
 
 ## Project Structure
 
 ```
-mrm-billing-app/
-├── client/                 # React frontend
+mrm-billing/
+├── client/                     # React Frontend
 │   ├── public/
-│   │   └── index.html
 │   ├── src/
-│   │   ├── components/     # React components
-│   │   │   ├── Header.jsx
-│   │   │   ├── MonthTabs.jsx
-│   │   │   ├── ClientPanel.jsx
-│   │   │   ├── BillingForm.jsx
-│   │   │   ├── Toast.jsx
-│   │   │   ├── Modals.jsx
-│   │   │   └── Legend.jsx
-│   │   ├── contexts/       # React Context
-│   │   │   └── AppContext.js
-│   │   ├── hooks/          # Custom hooks
-│   │   │   └── useBillingForm.js
-│   │   ├── services/       # API services
-│   │   │   └── api.js
-│   │   ├── styles/         # CSS styles
-│   │   │   └── App.css
-│   │   ├── App.js
-│   │   └── index.js
-│   └── package.json
-├── server/                 # Node.js backend
+│   │   ├── components/
+│   │   │   ├── AuthModal.jsx       # Login/Register/Forgot Password
+│   │   │   ├── BillingForm.jsx     # Main billing entry form
+│   │   │   ├── ClientPanel.jsx     # Client list sidebar
+│   │   │   ├── Header.jsx          # App header with actions
+│   │   │   ├── Legend.jsx          # Status legend
+│   │   │   ├── Modals.jsx          # View entries, export modals
+│   │   │   ├── MonthTabs.jsx       # April-March month navigation
+│   │   │   ├── ReportsPanel.jsx    # Reports dashboard
+│   │   │   ├── Toast.jsx           # Notification toasts
+│   │   │   └── VerifyEmail.jsx     # Email verification page
+│   │   ├── contexts/
+│   │   │   ├── AppContext.js       # Global app state
+│   │   │   └── AuthContext.js      # Authentication state
+│   │   ├── hooks/
+│   │   │   └── useBillingForm.js   # Billing form logic & calculations
+│   │   ├── services/
+│   │   │   └── api.js              # API client (Axios)
+│   │   └── styles/
+│   │       └── App.css             # Application styles
+│   ├── .env                        # Local dev config
+│   └── .env.production             # Production config
+│
+├── server/                     # Express Backend
 │   ├── config/
-│   │   └── db.js           # MongoDB connection
-│   ├── models/             # Mongoose models
-│   │   ├── Client.js
-│   │   ├── BillingEntry.js
-│   │   └── Settings.js
-│   ├── routes/             # Express routes
-│   │   ├── clients.js
-│   │   ├── billing.js
-│   │   └── settings.js
-│   ├── index.js            # Server entry point
-│   ├── .env.example
-│   └── package.json
-├── package.json            # Root package.json
-└── README.md
+│   │   └── db.js                   # MongoDB connection
+│   ├── middleware/
+│   │   └── auth.js                 # JWT authentication middleware
+│   ├── models/
+│   │   ├── Client.js               # Client schema
+│   │   ├── RoyaltyAccounting.js    # Billing entry schema + calculations
+│   │   ├── Settings.js             # App settings (FY, rates)
+│   │   └── User.js                 # User schema
+│   ├── routes/
+│   │   ├── auth.js                 # Auth endpoints
+│   │   ├── clients.js              # Client CRUD
+│   │   ├── royaltyAccounting.js    # Billing entries + reports
+│   │   └── settings.js             # Settings endpoints
+│   ├── scripts/
+│   │   ├── createAdminUser.js      # Create initial admin
+│   │   ├── seedFromExcel.js        # Import data from Excel
+│   │   └── syncClientNames.js      # Sync client names utility
+│   ├── services/
+│   │   └── emailService.js         # Email sending service
+│   ├── utils/
+│   │   └── jwt.js                  # JWT token utilities
+│   └── .env                        # Server environment config
+│
+├── vercel.json                 # Vercel deployment config
+└── package.json                # Root package with dev scripts
 ```
 
-## Prerequisites
+---
 
-- Node.js (v16 or higher)
-- MongoDB (local or Atlas)
-- npm or yarn
+## Getting Started
 
-## Installation
+### Prerequisites
+- **Node.js** v18+
+- **MongoDB Atlas** account (or local MongoDB)
+- **npm** or **yarn**
 
-### 1. Clone and Install Dependencies
+### 1. Clone & Install
 
 ```bash
-# Navigate to project directory
-cd mrm-billing-app
-
-# Install all dependencies (root, client, and server)
+git clone https://github.com/your-username/mrm-billing.git
+cd mrm-billing
 npm run install:all
 ```
 
-Or install separately:
+### 2. Configure Environment
 
-```bash
-# Install root dependencies
-npm install
-
-# Install server dependencies
-cd server && npm install
-
-# Install client dependencies
-cd ../client && npm install
-```
-
-### 2. Configure MongoDB
-
-Create a `.env` file in the `server` directory:
-
-```bash
-cp server/.env.example server/.env
-```
-
-Edit `server/.env` with your MongoDB connection string:
-
+**Server** (`server/.env`):
 ```env
-# Local MongoDB
-MONGODB_URI=mongodb://localhost:27017/mrm_billing
-
-# OR MongoDB Atlas
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/mrm_billing?retryWrites=true&w=majority
-
-PORT=5000
+PORT=5001
 NODE_ENV=development
+JWT_SECRET=your-secret-key-min-32-chars
+JWT_REFRESH_SECRET=your-refresh-secret-different
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
 ```
 
-### 3. Start the Application
+**Client** (`client/.env`):
+```env
+REACT_APP_API_URL=http://localhost:5001/api
+```
+
+### 3. Create Admin User
 
 ```bash
-# From the root directory, start both frontend and backend
+cd server
+npm run create-admin
+```
+Default credentials: `admin@mrm.com` / `Admin@123`
+
+### 4. Run Development Server
+
+```bash
+# From root directory - starts both client & server
 npm run dev
 ```
 
-This will start:
-- Backend server on `http://localhost:5000`
-- Frontend React app on `http://localhost:3000`
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:5001
+- **Health Check**: http://localhost:5001/api/health
+
+---
 
 ## API Endpoints
 
-### Clients
-
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/clients` | Get all clients |
-| GET | `/api/clients/:id` | Get client by ID |
-| POST | `/api/clients` | Create new client |
-| PUT | `/api/clients/:id` | Update client |
-| DELETE | `/api/clients/:id` | Delete/deactivate client |
-| POST | `/api/clients/bulk` | Bulk import clients |
+| `POST` | `/api/auth/register` | Register new user |
+| `POST` | `/api/auth/login` | Login |
+| `POST` | `/api/auth/refresh` | Refresh access token |
+| `GET` | `/api/clients` | List all clients |
+| `POST` | `/api/clients` | Create client |
+| `PUT` | `/api/clients/:id` | Update client |
+| `DELETE` | `/api/clients/:id` | Delete client |
+| `GET` | `/api/royalty-accounting` | Get billing entries |
+| `POST` | `/api/royalty-accounting` | Create/update entry |
+| `GET` | `/api/royalty-accounting/gst-report` | GST & Invoice report |
+| `GET` | `/api/royalty-accounting/receipts-report` | Receipts & TDS report |
+| `GET` | `/api/settings` | Get app settings |
+| `PUT` | `/api/settings/:key` | Update setting |
 
-### Billing Entries
+---
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/billing` | Get all billing entries |
-| GET | `/api/billing/:clientId/:month` | Get specific entry |
-| POST | `/api/billing` | Create/update billing entry |
-| PUT | `/api/billing/:id` | Update entry |
-| DELETE | `/api/billing/:clientId/:month` | Delete entry |
-| GET | `/api/billing/reports/summary` | Get summary report |
-| GET | `/api/billing/reports/client/:clientId` | Get client report |
+## Deployment
 
-### Settings
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get all settings |
-| GET | `/api/settings/:key` | Get specific setting |
-| PUT | `/api/settings/:key` | Update setting |
-| PUT | `/api/settings/financial-year` | Update financial year |
-| PUT | `/api/settings/exchange-rate` | Update exchange rate |
-
-## MongoDB Data Models
-
-### Client Schema
-
-```javascript
-{
-  clientId: String,      // Unique identifier (e.g., "MRM001")
-  name: String,          // Client name
-  type: String,          // "Film Composer", "Lyricist", etc.
-  fee: Number,           // Service fee (0.10 = 10%)
-  email: String,
-  phone: String,
-  isActive: Boolean,
-  createdAt: Date,
-  updatedAt: Date
-}
+### Client (Vercel)
+The client is configured for Vercel via `vercel.json`. Set the production API URL in `client/.env.production`:
+```env
+REACT_APP_API_URL=https://your-backend-url.com/api
 ```
 
-### BillingEntry Schema
-
-```javascript
-{
-  clientId: String,
-  clientName: String,
-  month: String,         // "apr", "may", etc.
-  monthLabel: String,    // "April 2025"
-  financialYear: {
-    startYear: Number,
-    endYear: Number
-  },
-  // Royalty amounts
-  iprsAmt: Number,
-  prsGbp: Number,
-  prsAmt: Number,
-  soundExAmt: Number,
-  isamraAmt: Number,
-  ascapAmt: Number,
-  pplAmt: Number,
-  // Commissions (calculated)
-  serviceFee: Number,
-  iprsComis: Number,
-  prsComis: Number,
-  // ... other commission fields
-  totalCommission: Number,
-  gst: Number,
-  totalInvoice: Number,
-  // Status
-  status: String,        // "draft" or "submitted"
-  invoiceStatus: String,
-  invoiceDate: Date,
-  gbpToInrRate: Number
-}
+### Server (Render / Railway)
+Deploy the `server/` directory with these environment variables:
+```env
+MONGODB_URI=your-mongodb-atlas-uri
+PORT=5001
+NODE_ENV=production
+JWT_SECRET=your-production-jwt-secret
+JWT_REFRESH_SECRET=your-production-refresh-secret
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
 ```
 
-### Settings Schema
+---
 
-```javascript
-{
-  key: String,           // "financialYear", "gbpToInrRate", etc.
-  value: Mixed,          // Setting value
-  description: String,
-  updatedAt: Date
-}
-```
+## Data Seeding
 
-## Usage Guide
-
-### Adding a Client
-
-1. Click "Add Client" button in the header
-2. Fill in the client details:
-   - Client ID (unique identifier)
-   - Client Name
-   - Client Type
-   - Service Fee percentage
-3. Click "Add Client"
-
-### Entering Billing Data
-
-1. Select a client from the left panel
-2. Choose the month from the tabs
-3. Enter royalty amounts:
-   - IPRS Amount (₹)
-   - PRS Amount (£) - auto-converts to INR
-   - Sound Exchange, ISAMRA, ASCAP, PPL amounts
-4. Commissions are auto-calculated based on service fee
-5. Add remarks if needed
-6. Click "Save Draft" or "Submit Entry"
-
-### Viewing Reports
-
-1. Click "View Entries" to see all billing entries
-2. Entries show status (Draft/Submitted), commission, and invoice totals
-
-### Changing Settings
-
-1. Click "Settings" button
-2. Update financial year or exchange rate
-3. Click "Save Settings"
-
-## Development
-
-### Running in Development Mode
+To import client data from Excel:
 
 ```bash
-# Start both frontend and backend with hot reload
-npm run dev
+cd server
+node scripts/seedFromExcel.js
 ```
 
-### Building for Production
+This reads the Excel file and:
+- Creates all client records with IDs, names, types, and commission rates
+- Imports 9 months (Apr–Dec 2025) of royalty data per client
+- Auto-calculates commissions, GST, invoices, and outstanding balances
+- Cascades `previousMonthOutstanding` across months
 
-```bash
-# Build the React frontend
-npm run build
-
-# Start production server
-npm start
-```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/mrm_billing` |
-| `PORT` | Server port | `5000` |
-| `NODE_ENV` | Environment | `development` |
-| `REACT_APP_API_URL` | API URL (client) | `/api` |
-
-## Troubleshooting
-
-### MongoDB Connection Issues
-
-1. Ensure MongoDB is running locally or Atlas cluster is accessible
-2. Check the connection string in `.env`
-3. Verify network access settings in MongoDB Atlas
-
-### Port Already in Use
-
-```bash
-# Kill process on port 3000 or 5000
-npx kill-port 3000
-npx kill-port 5000
-```
-
-### CORS Issues
-
-The server includes CORS configuration. If issues persist, check the `cors` middleware in `server/index.js`.
+---
 
 ## License
 
 ISC
-
-## Support
-
-For issues or questions, please create an issue in the repository.
-=======
-# MRM-Billing-App
->>>>>>> a0c4ed66d4892eba4ac99a39cd8475161d166198
-
-Email: admin@mrm.com
-Password: Admin@123
-#   m r m - b i l l i n g  
- 
