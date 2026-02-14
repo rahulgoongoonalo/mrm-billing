@@ -1,0 +1,19 @@
+{
+  "name": "mrm-billing-app",
+  "version": "1.0.0",
+  "description": "MRM Billing Data Entry Application with React frontend and MongoDB backend",
+  "scripts": {
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start"
+  },
+  "keywords": ["billing", "react", "mongodb", "music-rights"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
