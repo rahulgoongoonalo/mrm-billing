@@ -16,15 +16,13 @@ const EyeOffIcon = () => (
 );
 
 const AuthModal = () => {
-  // Detect ?resetToken= in the URL on mount
   const urlParams = new URLSearchParams(window.location.search);
   const urlResetToken = urlParams.get('resetToken');
 
-  const [view, setView] = useState(urlResetToken ? 'reset' : 'login'); // login | forgot | reset
+  const [view, setView] = useState(urlResetToken ? 'reset' : 'login');
   const [formData, setFormData] = useState({ email: '', password: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [devResetUrl, setDevResetUrl] = useState('');
   const [resetToken] = useState(urlResetToken || '');
   const [showPassword, setShowPassword] = useState({});
 
@@ -34,7 +32,6 @@ const AuthModal = () => {
 
   const { login, forgotPassword, resetPassword } = useAuth();
 
-  // Clear URL param once captured so it doesn't persist on refresh after reset
   useEffect(() => {
     if (urlResetToken) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -46,7 +43,6 @@ const AuthModal = () => {
     setMessage({ type: '', text: '' });
   };
 
-  // ── Login ──
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -63,15 +59,13 @@ const AuthModal = () => {
     }
   };
 
-  // ── Forgot Password ──
   const handleForgot = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
       const result = await forgotPassword(formData.email);
-      setMessage({ type: 'success', text: result.message || 'If that email is registered, a reset link has been sent.' });
-      if (result.resetUrl) setDevResetUrl(result.resetUrl);
+      setMessage({ type: 'success', text: result.message || 'If that email is registered, a password reset link has been sent to your email.' });
       setFormData({ ...formData, email: '' });
     } catch {
       setMessage({ type: 'error', text: 'Something went wrong. Please try again.' });
@@ -80,7 +74,6 @@ const AuthModal = () => {
     }
   };
 
-  // ── Reset Password ──
   const handleReset = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -92,10 +85,16 @@ const AuthModal = () => {
       return;
     }
 
+    if (formData.newPassword.length < 8) {
+      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
+      setLoading(false);
+      return;
+    }
+
     try {
       const result = await resetPassword(resetToken, formData.newPassword);
       if (result.success) {
-        setMessage({ type: 'success', text: result.message || 'Password reset successful. You can now sign in.' });
+        setMessage({ type: 'success', text: result.message || 'Password updated successfully! You can now sign in.' });
         setFormData({ ...formData, newPassword: '', confirmPassword: '' });
         setTimeout(() => setView('login'), 2000);
       } else {
@@ -149,6 +148,10 @@ const AuthModal = () => {
               Forgot Password?
             </button>
           </div>
+
+          <div className="auth-footer">
+            <p className="auth-powered-by">Powered by Music Rights Management India</p>
+          </div>
         </div>
       </div>
     );
@@ -161,7 +164,7 @@ const AuthModal = () => {
         <div className="auth-modal">
           <div className="auth-modal-header">
             <h2>Forgot Password</h2>
-            <p className="auth-subtitle">Enter your email to receive a reset link</p>
+            <p className="auth-subtitle">Enter your email to receive a password reset link</p>
           </div>
 
           <form onSubmit={handleForgot} className="auth-form">
@@ -172,23 +175,14 @@ const AuthModal = () => {
 
             <MessageBanner />
 
-            {devResetUrl && (
-              <div className="dev-reset-link">
-                <p>No email configured. Use this link to reset:</p>
-                <button type="button" className="btn btn-primary btn-block" onClick={() => { window.location.href = '/?resetToken=' + new URL(devResetUrl).searchParams.get('resetToken'); }}>
-                  Open Reset Link
-                </button>
-              </div>
-            )}
-
             <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
               {loading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </form>
 
           <div className="auth-footer">
-            <button type="button" className="auth-link" onClick={() => { setView('login'); setMessage({ type: '', text: '' }); setDevResetUrl(''); }}>
-              ← Back to Sign In
+            <button type="button" className="auth-link" onClick={() => { setView('login'); setMessage({ type: '', text: '' }); }}>
+              Back to Sign In
             </button>
           </div>
         </div>
@@ -229,13 +223,13 @@ const AuthModal = () => {
             <MessageBanner />
 
             <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Resetting...' : 'Reset Password'}
+              {loading ? 'Updating...' : 'Update Password'}
             </button>
           </form>
 
           <div className="auth-footer">
             <button type="button" className="auth-link" onClick={() => { setView('login'); setMessage({ type: '', text: '' }); }}>
-              ← Back to Sign In
+              Back to Sign In
             </button>
           </div>
         </div>

@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const Settings = require('../models/Settings');
+const Client = require('../models/Client');
+const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+
+const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
 // All settings routes require authentication
 router.use(authenticateToken);
@@ -84,21 +88,61 @@ router.post('/initialize', requireRole(['admin']), async (req, res) => {
 router.put('/financial-year', requireRole(['admin']), async (req, res) => {
   try {
     const { startYear } = req.body;
-    
+
     if (!startYear || isNaN(startYear)) {
       return res.status(400).json({ message: 'Valid start year is required' });
     }
-    
+
     const financialYear = {
       startYear: parseInt(startYear),
       endYear: parseInt(startYear) + 1
     };
-    
+
     await Settings.updateSetting('financialYear', financialYear);
-    
-    res.json({ 
-      message: `Financial year updated to FY ${financialYear.startYear}-${financialYear.endYear}`,
-      financialYear 
+
+    // Auto-create blank entries for all active clients in the new FY
+    const clients = await Client.find({ isActive: true });
+    let created = 0;
+
+    // Get the previous FY's March entry for each client to carry forward outstanding
+    const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
+
+    for (const client of clients) {
+      // Check if the previous FY's last month (March) has an outstanding to carry forward
+      const marchEntry = await RoyaltyAccounting.findOne({
+        clientId: client.clientId,
+        month: 'mar',
+        year: prevFY.endYear
+      });
+      const carryForward = marchEntry ? marchEntry.totalOutstanding : 0;
+
+      for (let i = 0; i < monthOrder.length; i++) {
+        const month = monthOrder[i];
+        const year = ['jan', 'feb', 'mar'].includes(month)
+          ? financialYear.endYear
+          : financialYear.startYear;
+
+        // Only create if entry doesn't already exist
+        const exists = await RoyaltyAccounting.findOne({ clientId: client.clientId, month, year });
+        if (!exists) {
+          await RoyaltyAccounting.create({
+            clientId: client.clientId,
+            clientName: client.name,
+            month,
+            year,
+            commissionRate: client.commissionRate || 0,
+            gstRate: 18,
+            previousMonthOutstanding: i === 0 ? carryForward : 0
+          });
+          created++;
+        }
+      }
+    }
+
+    res.json({
+      message: `Financial year updated to FY ${financialYear.startYear}-${financialYear.endYear}. Created ${created} new entries for ${clients.length} clients.`,
+      financialYear,
+      entriesCreated: created
     });
   } catch (error) {
     console.error('Error updating financial year:', error);

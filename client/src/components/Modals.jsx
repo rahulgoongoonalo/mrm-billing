@@ -242,7 +242,7 @@ function SettingsModal({ onClose }) {
         <div className="input-group" style={{ marginBottom: 16 }}>
           <label>Financial Year Start</label>
           <select value={fyStart} onChange={(e) => setFyStart(e.target.value)}>
-            {[2023, 2024, 2025, 2026, 2027, 2028].map(year => (
+            {Array.from({ length: 13 }, (_, i) => 2023 + i).map(year => (
               <option key={year} value={year}>FY {year}-{year + 1}</option>
             ))}
           </select>

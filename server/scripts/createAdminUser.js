@@ -5,41 +5,63 @@ require('dotenv').config();
 
 dns.setServers(['1.1.1.1', '8.8.8.8']);
 
-async function createAdminUser() {
+const users = [
+  {
+    email: 'admin@mrm.com',
+    password: 'Admin@123',
+    name: 'MRM Admin',
+    role: 'admin',
+    isVerified: true,
+    isActive: true
+  },
+  {
+    email: 'accounts@joshuainc.in',
+    password: 'Poonam@mrm',
+    name: 'Poonam',
+    role: 'user',
+    isVerified: true,
+    isActive: true
+  },
+  {
+    email: 'accounts@musicrightsmanagementindia.com',
+    password: 'Pallavi@mrm',
+    name: 'Pallavi',
+    role: 'user',
+    isVerified: true,
+    isActive: true
+  },
+  {
+    email: 'rahul.goongoonalo@gmail.com',
+    password: 'Rahul@mrm',
+    name: 'Rahul',
+    role: 'admin',
+    isVerified: true,
+    isActive: true
+  }
+];
+
+async function createUsers() {
   try {
-    // Connect to MongoDB
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB');
 
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@mrm.com' });
-    if (existingAdmin) {
-      console.log('Admin user already exists!');
-      console.log('Email:', existingAdmin.email);
-      console.log('Name:', existingAdmin.name);
-      process.exit(0);
+    for (const userData of users) {
+      const existing = await User.findOne({ email: userData.email });
+      if (existing) {
+        console.log(`User already exists: ${userData.email} (${existing.name})`);
+        continue;
+      }
+
+      const user = await User.create(userData);
+      console.log(`Created user: ${user.email} (${user.name}) - Role: ${user.role}`);
     }
 
-    // Create admin user
-    const admin = await User.create({
-      email: 'admin@mrm.com',
-      password: 'Admin@123',  // Change this password after first login!
-      name: 'MRM Admin',
-      role: 'admin',
-      isVerified: true,
-      isActive: true
-    });
-
-    console.log('✓ Admin user created successfully!');
-    console.log('Email:', admin.email);
-    console.log('Password: Admin@123');
-    console.log('\n⚠️  IMPORTANT: Change the password after first login!\n');
-
+    console.log('\nDone!');
     process.exit(0);
   } catch (error) {
-    console.error('Error creating admin user:', error);
+    console.error('Error creating users:', error);
     process.exit(1);
   }
 }
 
-createAdminUser();
+createUsers();

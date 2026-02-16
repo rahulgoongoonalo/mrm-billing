@@ -1,14 +1,25 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
+let transporter = null;
+
+const getTransporter = () => {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
   }
-});
+  return transporter;
+};
 
 const sendVerificationEmail = async (email, token, name) => {
   const verificationUrl = `${process.env.APP_URL}/?token=${token}`;
@@ -27,7 +38,7 @@ const sendVerificationEmail = async (email, token, name) => {
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await getTransporter().sendMail(mailOptions);
 };
 
 const sendPasswordResetEmail = async (email, token, name) => {
@@ -48,10 +59,11 @@ const sendPasswordResetEmail = async (email, token, name) => {
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  await getTransporter().sendMail(mailOptions);
 };
 
 module.exports = {
+  getTransporter,
   sendVerificationEmail,
   sendPasswordResetEmail
 };

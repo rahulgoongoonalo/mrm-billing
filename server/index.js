@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cron = require('node-cron');
 const connectDB = require('./config/db');
 
 // Import routes
@@ -11,6 +12,9 @@ const settingsRoutes = require('./routes/settings');
 
 // Import models for initialization
 const Settings = require('./models/Settings');
+
+// Import notification service
+const { sendOutstandingNotification } = require('./services/outstandingNotification');
 
 const app = express();
 
@@ -86,6 +90,13 @@ const PORT = process.env.PORT || 5001;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await initializeApp();
+
+  // Schedule daily outstanding email at 1:20 PM (server local time)
+  cron.schedule('20 13 * * *', () => {
+    console.log('Running daily outstanding notification...');
+    sendOutstandingNotification();
+  });
+  console.log('Outstanding notification scheduled daily at 1:20 PM');
 });
 
 module.exports = app;

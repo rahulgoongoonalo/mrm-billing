@@ -132,6 +132,9 @@ function ReportsPanel({ onClose }) {
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
   const [excludedClients, setExcludedClients] = useState(new Set());
+  const [dashboardClient, setDashboardClient] = useState('all');
+  const [dashboardSearch, setDashboardSearch] = useState('');
+  const [dashboardDropdownOpen, setDashboardDropdownOpen] = useState(false);
 
   const filteredEntries = useMemo(() => {
     const from = new Date(dateFrom + 'T00:00:00');
@@ -191,29 +194,30 @@ function ReportsPanel({ onClose }) {
   };
 
   const dashboardStats = useMemo(() => {
-    const totalClients = clients.length;
-    const totalEntries = entries.length;
-    const draftCount = entries.filter(e => e.status === 'draft').length;
-    const submittedCount = entries.filter(e => e.status === 'submitted').length;
-    const totalCommission = entries.reduce((sum, e) => sum + (e.totalCommission || 0), 0);
+    const src = dashboardClient === 'all' ? entries : entries.filter(e => e.clientId === dashboardClient);
+    const totalClients = dashboardClient === 'all' ? clients.length : 1;
+    const totalEntries = src.length;
+    const draftCount = src.filter(e => e.status === 'draft').length;
+    const submittedCount = src.filter(e => e.status === 'submitted').length;
+    const totalCommission = src.reduce((sum, e) => sum + (e.totalCommission || 0), 0);
     // Total Outstanding = sum of each client's latest month outstanding only
     const latestByClient = {};
-    entries.forEach(e => {
+    src.forEach(e => {
       const prev = latestByClient[e.clientId];
       if (!prev || FY_ORDER[e.month] > FY_ORDER[prev.month] || (e.year > prev.year)) {
         latestByClient[e.clientId] = e;
       }
     });
     const totalOutstanding = Object.values(latestByClient).reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
-    const totalIprs = entries.reduce((sum, e) => sum + (e.iprsAmount || 0), 0);
-    const totalPrs = entries.reduce((sum, e) => sum + (e.prsAmount || 0), 0);
-    const totalAscap = entries.reduce((sum, e) => sum + (e.ascapAmount || 0), 0);
-    const totalIsamra = entries.reduce((sum, e) => sum + (e.isamraAmount || 0), 0);
-    const totalSoundEx = entries.reduce((sum, e) => sum + (e.soundExchangeAmount || 0), 0);
-    const totalPpl = entries.reduce((sum, e) => sum + (e.pplAmount || 0), 0);
+    const totalIprs = src.reduce((sum, e) => sum + (e.iprsAmount || 0), 0);
+    const totalPrs = src.reduce((sum, e) => sum + (e.prsAmount || 0), 0);
+    const totalAscap = src.reduce((sum, e) => sum + (e.ascapAmount || 0), 0);
+    const totalIsamra = src.reduce((sum, e) => sum + (e.isamraAmount || 0), 0);
+    const totalSoundEx = src.reduce((sum, e) => sum + (e.soundExchangeAmount || 0), 0);
+    const totalPpl = src.reduce((sum, e) => sum + (e.pplAmount || 0), 0);
 
     return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl };
-  }, [clients, entries]);
+  }, [clients, entries, dashboardClient]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
 
@@ -416,6 +420,65 @@ function ReportsPanel({ onClose }) {
                 <h2>Reports Dashboard</h2>
                 <p>Overview of royalty accounting data for FY {financialYear.startYear}-{financialYear.endYear}</p>
               </div>
+            </div>
+            <div className="dashboard-filter-bar">
+              <div className="dashboard-filter-dropdown" ref={(el) => {
+                if (!el) return;
+                const handler = (e) => { if (!el.contains(e.target)) setDashboardDropdownOpen(false); };
+                el._cleanup && document.removeEventListener('mousedown', el._cleanup);
+                document.addEventListener('mousedown', handler);
+                el._cleanup = handler;
+              }}>
+                <button className="dashboard-filter-btn" onClick={() => setDashboardDropdownOpen(!dashboardDropdownOpen)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                  </svg>
+                  {dashboardClient === 'all' ? 'All Members' : clients.find(c => c.clientId === dashboardClient)?.name || dashboardClient}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: dashboardDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                {dashboardDropdownOpen && (
+                  <div className="dashboard-filter-menu">
+                    <div className="dashboard-filter-search">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" placeholder="Search members..." value={dashboardSearch} onChange={(e) => setDashboardSearch(e.target.value)} autoFocus />
+                    </div>
+                    <div className="dashboard-filter-list">
+                      {!dashboardSearch && (
+                        <div className={`dashboard-filter-item ${dashboardClient === 'all' ? 'active' : ''}`} onClick={() => { setDashboardClient('all'); setDashboardDropdownOpen(false); setDashboardSearch(''); }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                          </svg>
+                          All Members
+                        </div>
+                      )}
+                      {clients
+                        .filter(c => !dashboardSearch || c.name.toLowerCase().includes(dashboardSearch.toLowerCase()) || c.clientId.toLowerCase().includes(dashboardSearch.toLowerCase()))
+                        .sort((a, b) => (parseInt(a.clientId?.match(/(\d+)/)?.[1], 10) || 0) - (parseInt(b.clientId?.match(/(\d+)/)?.[1], 10) || 0))
+                        .map(c => (
+                          <div key={c.clientId} className={`dashboard-filter-item ${dashboardClient === c.clientId ? 'active' : ''}`} onClick={() => { setDashboardClient(c.clientId); setDashboardDropdownOpen(false); setDashboardSearch(''); }}>
+                            <span className="client-avatar" style={{ width: 24, height: 24, fontSize: 9 }}>{getClientInitials(c.name)}</span>
+                            <span>{c.name}</span>
+                            <span className="dashboard-filter-id">{c.clientId}</span>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+              {dashboardClient !== 'all' && (
+                <button className="dashboard-filter-clear" onClick={() => setDashboardClient('all')}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  Clear Filter
+                </button>
+              )}
             </div>
             <div className="stats-grid">
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>

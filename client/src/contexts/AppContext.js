@@ -297,12 +297,24 @@ export function AppProvider({ children }) {
   // Settings actions
   const updateFinancialYear = useCallback(async (startYear) => {
     try {
-      await settingsApi.updateFinancialYear(startYear);
+      const res = await settingsApi.updateFinancialYear(startYear);
       dispatch({
         type: ActionTypes.UPDATE_SETTING,
         payload: { key: 'financialYear', value: { startYear, endYear: startYear + 1 } },
       });
-      showToast(`Financial year updated to FY ${startYear}-${startYear + 1}`);
+
+      // Reload entries for the new FY
+      dispatch({ type: ActionTypes.SET_BILLING_LOADING, payload: true });
+      const entriesRes = await royaltyApi.getAll({ financialYear: startYear });
+      const entriesMap = entriesRes.data.reduce((acc, entry) => {
+        const key = `${entry.clientId}_${entry.month}`;
+        acc[key] = entry;
+        return acc;
+      }, {});
+      dispatch({ type: ActionTypes.SET_BILLING_ENTRIES, payload: entriesMap });
+
+      const created = res.data.entriesCreated || 0;
+      showToast(`FY updated to ${startYear}-${startYear + 1}. ${created > 0 ? `${created} entries created.` : 'Entries loaded.'}`);
     } catch (error) {
       showToast('Error updating financial year', 'error');
       throw error;
