@@ -22,6 +22,8 @@ const monthLabels = {
 
 const MONTH_NUM = { apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12, jan: 1, feb: 2, mar: 3 };
 
+const FY_ORDER = { apr: 0, may: 1, jun: 2, jul: 3, aug: 4, sep: 5, oct: 6, nov: 7, dec: 8, jan: 9, feb: 10, mar: 11 };
+
 const getEntryDate = (entry) => {
   const m = MONTH_NUM[entry.month];
   return new Date(entry.year, m - 1, 1);
@@ -117,7 +119,7 @@ const DateRangeFilter = ({ dateFrom, dateTo, setDateFrom, setDateTo, clients, ex
 );
 
 function ReportsPanel({ onClose }) {
-  const { clients, billingEntries, settings, updateClient, showToast } = useApp();
+  const { clients, billingEntries, settings, updateClient } = useApp();
   const [activeReport, setActiveReport] = useState('dashboard');
   const [selectedClientForEdit, setSelectedClientForEdit] = useState(null);
   const [editFormData, setEditFormData] = useState(null);
@@ -158,9 +160,6 @@ function ReportsPanel({ onClose }) {
       .filter(c => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || c.clientId.toLowerCase().includes(clientSearch.toLowerCase()))
       .sort((a, b) => (parseInt(a.clientId?.match(/(\d+)/)?.[1], 10) || 0) - (parseInt(b.clientId?.match(/(\d+)/)?.[1], 10) || 0));
   }, [clients, excludedClients, clientSearch]);
-
-  // Financial year month order for sorting (Apr=0 ... Mar=11)
-  const FY_ORDER = { apr: 0, may: 1, jun: 2, jul: 3, aug: 4, sep: 5, oct: 6, nov: 7, dec: 8, jan: 9, feb: 10, mar: 11 };
 
   // Group entries by clientId, sorted by financial year month order
   const entriesByClient = useMemo(() => {
