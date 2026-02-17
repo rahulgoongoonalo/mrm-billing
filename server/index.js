@@ -24,7 +24,7 @@ connectDB();
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? ['https://billing.musicrightsmanagement.in']
+    ? ['https://billing.musicrightsmanagement.in', 'https://mrm-billing.vercel.app']
     : true
 }));
 app.use(express.json());
