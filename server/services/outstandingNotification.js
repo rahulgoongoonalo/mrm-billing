@@ -99,7 +99,7 @@ async function sendOutstandingNotification() {
 
     const mailOptions = {
       from: process.env.EMAIL_FROM,
-      to: 'rahul.goongoonalo@gmail.com',
+      to: 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com',
       subject: `MRM Outstanding Report - ${new Date().toLocaleDateString('en-IN')}`,
       html
     };
