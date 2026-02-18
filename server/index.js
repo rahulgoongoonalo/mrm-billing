@@ -46,11 +46,21 @@ app.use('/api/settings', settingsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
+  res.json({
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
+});
+
+// Manual trigger for outstanding notification email (for testing)
+app.post('/api/trigger-outstanding-email', async (req, res) => {
+  try {
+    await sendOutstandingNotification();
+    res.json({ success: true, message: 'Outstanding notification email sent' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 // Initialize default settings on startup
@@ -91,12 +101,12 @@ app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await initializeApp();
 
-  // Schedule daily outstanding email at 1:20 PM (server local time)
-  cron.schedule('20 13 * * *', () => {
+  // Schedule daily outstanding email at 3:45 PM IST
+  cron.schedule('45 15 * * *', () => {
     console.log('Running daily outstanding notification...');
     sendOutstandingNotification();
-  });
-  console.log('Outstanding notification scheduled daily at 1:20 PM');
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('Outstanding notification scheduled daily at 3:45 PM IST');
 });
 
 module.exports = app;
