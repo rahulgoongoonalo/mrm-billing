@@ -138,6 +138,7 @@ function ReportsPanel({ onClose }) {
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [dashboardDropdownOpen, setDashboardDropdownOpen] = useState(false);
   const dashboardDropdownRef = useRef(null);
+  const [outstandingSortDesc, setOutstandingSortDesc] = useState(false);
 
   // Proper outside click handler for dashboard filter dropdown
   useEffect(() => {
@@ -743,17 +744,37 @@ function ReportsPanel({ onClose }) {
               </button>
             </div>
             <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo} clients={clients} excludedClients={excludedClients} setExcludedClients={setExcludedClients} allClientIds={allClientIds} />
-            <div className="report-client-search">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="text" placeholder="Search clients..." value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div className="report-client-search" style={{ flex: 1, marginBottom: 0 }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" placeholder="Search clients..." value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} />
+              </div>
+              <button
+                className={`btn ${outstandingSortDesc ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setOutstandingSortDesc(prev => !prev)}
+                title={outstandingSortDesc ? 'Sorted by outstanding (high to low). Click to reset.' : 'Sort by outstanding (high to low)'}
+                style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M3 12h12M3 18h6"></path>
+                </svg>
+                {outstandingSortDesc ? 'Sorted: High → Low' : 'Sort Outstanding'}
+              </button>
             </div>
             <div className="report-client-list">
               {filteredClients.length === 0 ? (
                 <div className="report-empty">No clients found</div>
               ) : (
-                filteredClients.map(client => {
+                (outstandingSortDesc
+                  ? [...filteredClients].sort((a, b) => {
+                      const aOut = getClientSummary(a.clientId).totalOutstanding || 0;
+                      const bOut = getClientSummary(b.clientId).totalOutstanding || 0;
+                      return bOut - aOut;
+                    })
+                  : filteredClients
+                ).map(client => {
                   const summary = getClientSummary(client.clientId);
                   const isExpanded = expandedClient === client.clientId;
                   const clientEntries = entriesByClient[client.clientId] || [];
