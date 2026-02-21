@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 
 const formatCurrency = (amount) => {
@@ -137,6 +137,18 @@ function ReportsPanel({ onClose }) {
   const [dashboardClient, setDashboardClient] = useState('all');
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [dashboardDropdownOpen, setDashboardDropdownOpen] = useState(false);
+  const dashboardDropdownRef = useRef(null);
+
+  // Proper outside click handler for dashboard filter dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dashboardDropdownRef.current && !dashboardDropdownRef.current.contains(e.target)) {
+        setDashboardDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const filteredEntries = useMemo(() => {
     const from = new Date(dateFrom + 'T00:00:00');
@@ -421,13 +433,7 @@ function ReportsPanel({ onClose }) {
               </div>
             </div>
             <div className="dashboard-filter-bar">
-              <div className="dashboard-filter-dropdown" ref={(el) => {
-                if (!el) return;
-                const handler = (e) => { if (!el.contains(e.target)) setDashboardDropdownOpen(false); };
-                el._cleanup && document.removeEventListener('mousedown', el._cleanup);
-                document.addEventListener('mousedown', handler);
-                el._cleanup = handler;
-              }}>
+              <div className="dashboard-filter-dropdown" ref={dashboardDropdownRef}>
                 <button className="dashboard-filter-btn" onClick={() => setDashboardDropdownOpen(!dashboardDropdownOpen)}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
