@@ -513,9 +513,9 @@ function ReportsPanel({ onClose }) {
                 <div className="stat-label">Previous Year Outstanding</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.prevYearOutstanding)}</div>
               </div>
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
-                <div className="stat-label">Total Commission</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalCommission)}</div>
+              <div className="stat-card" style={{ '--card-accent': 'var(--accent-purple)' }}>
+                <div className="stat-label">This Year Outstanding</div>
+                <div className="stat-value">{formatCurrency((dashboardStats.totalOutstanding || 0) - (dashboardStats.prevYearOutstanding || 0))}</div>
               </div>
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-green)' }}>
                 <div className="stat-label">Total Outstanding</div>
@@ -524,6 +524,10 @@ function ReportsPanel({ onClose }) {
             </div>
             <div className="stats-grid">
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
+                <div className="stat-label">Total Commission</div>
+                <div className="stat-value">{formatCurrency(dashboardStats.totalCommission)}</div>
+              </div>
+              <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
                 <div className="stat-label">Total IPRS</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalIprs)}</div>
               </div>
@@ -531,12 +535,12 @@ function ReportsPanel({ onClose }) {
                 <div className="stat-label">Total PRS</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalPrs)}</div>
               </div>
+            </div>
+            <div className="stats-grid">
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-orange)' }}>
                 <div className="stat-label">Total ASCAP</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalAscap)}</div>
               </div>
-            </div>
-            <div className="stats-grid">
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-green)' }}>
                 <div className="stat-label">Total ISAMRA</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalIsamra)}</div>
@@ -545,6 +549,8 @@ function ReportsPanel({ onClose }) {
                 <div className="stat-label">Total Sound Exchange</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalSoundEx)}</div>
               </div>
+            </div>
+            <div className="stats-grid">
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-purple)' }}>
                 <div className="stat-label">Total PPL</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalPpl)}</div>
