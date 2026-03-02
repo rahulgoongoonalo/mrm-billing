@@ -171,7 +171,14 @@ royaltyAccountingSchema.statics.cascadeUpdate = async function (clientId, startM
 
     // Get previous month's totalOutstanding
     let prevOutstanding = 0;
-    if (i > 0) {
+    if (i === 0) {
+      // April: carry forward from previous FY's March
+      const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
+      const marchEntry = await this.findOne({ clientId, month: 'mar', year: prevFY.endYear });
+      if (marchEntry) {
+        prevOutstanding = marchEntry.totalOutstanding;
+      }
+    } else if (i > 0) {
       const prevMonth = monthOrder[i - 1];
       const prevYear = getYearForMonth(prevMonth, financialYear);
       const prevEntry = await this.findOne({ clientId, month: prevMonth, year: prevYear });

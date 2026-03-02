@@ -64,11 +64,13 @@ export function useBillingForm() {
       setIsDirty(false);
       setIsReadOnly(currentEntry.status === 'submitted');
     } else {
-      // Auto-populate commissionRate from client
+      // Auto-populate commissionRate and gstRate from client
       const clientRate = selectedClient?.commissionRate || (selectedClient?.fee ? selectedClient.fee * 100 : '');
+      const clientGstRate = selectedClient?.gstRate ?? 18;
       setFormData({
         ...initialFormState,
         commissionRate: clientRate || '',
+        gstRate: clientGstRate,
       });
       setIsDirty(false);
       setIsReadOnly(false);
@@ -253,13 +255,35 @@ export function useBillingForm() {
     setIsDirty(false);
   }, [selectedClient, buildEntryData, saveEntry]);
 
+  // Validate required royalty amount fields (0 is allowed, empty/blank is not)
+  const validateRoyaltyFields = useCallback(() => {
+    const requiredFields = [
+      { key: 'iprsAmount', label: 'IPRS Amount' },
+      { key: 'prsAmount', label: 'PRS Amount (INR)' },
+      { key: 'soundExchangeAmount', label: 'Sound Exchange Amount' },
+      { key: 'isamraAmount', label: 'ISAMRA Amount' },
+      { key: 'ascapAmount', label: 'ASCAP Amount' },
+      { key: 'pplAmount', label: 'PPL Amount' },
+    ];
+
+    const missing = requiredFields.filter(f => {
+      const val = formData[f.key];
+      return val === '' || val === undefined || val === null;
+    });
+
+    if (missing.length > 0) {
+      throw new Error(`Please fill in: ${missing.map(f => f.label).join(', ')}`);
+    }
+  }, [formData]);
+
   // Submit entry
   const handleSubmit = useCallback(async () => {
     if (!selectedClient) throw new Error('Please select a client first');
+    validateRoyaltyFields();
     await saveEntry(buildEntryData(), 'submitted');
     setIsDirty(false);
     setIsReadOnly(true);
-  }, [selectedClient, buildEntryData, saveEntry]);
+  }, [selectedClient, buildEntryData, saveEntry, validateRoyaltyFields]);
 
   // Delete entry
   const handleDelete = useCallback(async () => {

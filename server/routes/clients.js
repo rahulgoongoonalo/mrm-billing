@@ -61,7 +61,7 @@ router.get('/:id', async (req, res) => {
 // @access  Public
 router.post('/', async (req, res) => {
   try {
-    const { clientId, name, type, clientType, fee, commissionRate, previousBalance, iprs, prs, isamra } = req.body;
+    const { clientId, name, type, clientType, fee, commissionRate, gstRate, previousBalance, iprs, prs, isamra } = req.body;
 
     // Check if client ID already exists
     const existingClient = await Client.findOne({ clientId });
@@ -90,6 +90,7 @@ router.post('/', async (req, res) => {
       clientType: clientType || '',
       fee: parseFloat(fee) || 0.10,
       commissionRate: parseFloat(commissionRate) || 0,
+      gstRate: gstRate !== undefined ? parseFloat(gstRate) : 18,
       previousBalance: previousBalance || 0,
       iprs: iprs || false,
       prs: prs || false,

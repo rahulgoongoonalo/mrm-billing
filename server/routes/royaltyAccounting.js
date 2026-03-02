@@ -64,7 +64,19 @@ router.get('/previous-outstanding/:clientId/:month', async (req, res) => {
       : await Settings.getSetting('financialYear');
 
     const currentMonthIndex = monthOrder.indexOf(month);
-    if (currentMonthIndex <= 0) {
+
+    // For April (index 0), look at previous FY's March for carry-forward
+    if (currentMonthIndex === 0) {
+      const prevFY = { startYear: fy.startYear - 1, endYear: fy.startYear };
+      const marchEntry = await RoyaltyAccounting.findOne({
+        clientId,
+        month: 'mar',
+        year: prevFY.endYear
+      });
+      return res.json({ totalOutstanding: marchEntry?.totalOutstanding || 0 });
+    }
+
+    if (currentMonthIndex < 0) {
       return res.json({ totalOutstanding: 0 });
     }
 
@@ -127,16 +139,29 @@ router.post('/', async (req, res) => {
     // Auto-fetch previous month outstanding if not explicitly provided
     let previousMonthOutstanding = data.previousMonthOutstanding || 0;
     const currentMonthIndex = monthOrder.indexOf(month);
-    if (currentMonthIndex > 0 && !data.previousMonthOutstanding) {
-      const prevMonth = monthOrder[currentMonthIndex - 1];
-      const prevYear = getYearForMonth(prevMonth, financialYear);
-      const prevEntry = await RoyaltyAccounting.findOne({
-        clientId,
-        month: prevMonth,
-        year: prevYear
-      });
-      if (prevEntry) {
-        previousMonthOutstanding = prevEntry.totalOutstanding;
+    if (!data.previousMonthOutstanding) {
+      if (currentMonthIndex === 0) {
+        // April: carry forward from previous FY's March
+        const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
+        const marchEntry = await RoyaltyAccounting.findOne({
+          clientId,
+          month: 'mar',
+          year: prevFY.endYear
+        });
+        if (marchEntry) {
+          previousMonthOutstanding = marchEntry.totalOutstanding;
+        }
+      } else if (currentMonthIndex > 0) {
+        const prevMonth = monthOrder[currentMonthIndex - 1];
+        const prevYear = getYearForMonth(prevMonth, financialYear);
+        const prevEntry = await RoyaltyAccounting.findOne({
+          clientId,
+          month: prevMonth,
+          year: prevYear
+        });
+        if (prevEntry) {
+          previousMonthOutstanding = prevEntry.totalOutstanding;
+        }
       }
     }
 
@@ -184,6 +209,33 @@ router.post('/', async (req, res) => {
           entry,
           cascadedEntries
         });
+      }
+    }
+
+    // If March (last month of FY), cascade into next FY's April
+    if (currentMonthIndex === monthOrder.length - 1) {
+      const nextFY = { startYear: financialYear.endYear, endYear: financialYear.endYear + 1 };
+      const nextAprilEntry = await RoyaltyAccounting.findOne({
+        clientId,
+        month: 'apr',
+        year: nextFY.startYear
+      });
+      if (nextAprilEntry) {
+        const newPrevOutstanding = Math.round((entry.totalOutstanding + Number.EPSILON) * 100) / 100;
+        if (nextAprilEntry.previousMonthOutstanding !== newPrevOutstanding) {
+          nextAprilEntry.previousMonthOutstanding = newPrevOutstanding;
+          await nextAprilEntry.save();
+          // Also cascade through the next FY
+          const cascadedEntries = await RoyaltyAccounting.cascadeUpdate(
+            clientId,
+            1, // start from May (index 1)
+            nextFY
+          );
+          return res.status(201).json({
+            entry,
+            cascadedEntries: [nextAprilEntry, ...cascadedEntries]
+          });
+        }
       }
     }
 

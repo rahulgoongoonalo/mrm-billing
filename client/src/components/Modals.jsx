@@ -23,6 +23,7 @@ function AddClientModal({ onClose }) {
     name: '',
     type: 'Composer',
     fee: '0.15',
+    gstRate: '18',
   });
   const [loading, setLoading] = useState(false);
 
@@ -40,6 +41,7 @@ function AddClientModal({ onClose }) {
         ...formData,
         fee,
         commissionRate: fee * 100,
+        gstRate: parseFloat(formData.gstRate) || 18,
       });
       onClose();
     } catch (error) {
@@ -114,6 +116,18 @@ function AddClientModal({ onClose }) {
                 <option value="0.25">25%</option>
                 <option value="0.27">27%</option>
               </select>
+            </div>
+            <div className="input-group">
+              <label>GST Rate (%)</label>
+              <input
+                type="number"
+                value={formData.gstRate}
+                onChange={(e) => setFormData({ ...formData, gstRate: e.target.value })}
+                placeholder="18"
+                min="0"
+                max="100"
+                step="0.01"
+              />
             </div>
           </div>
         </div>

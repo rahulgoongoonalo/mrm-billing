@@ -35,6 +35,12 @@ const clientSchema = new mongoose.Schema({
     min: 0,
     max: 100
   },
+  gstRate: {
+    type: Number,
+    default: 18,
+    min: 0,
+    max: 100
+  },
   previousBalance: {
     type: Number,
     default: 0

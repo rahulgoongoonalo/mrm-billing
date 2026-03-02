@@ -212,6 +212,10 @@ function ReportsPanel({ onClose }) {
     const draftCount = src.filter(e => e.status === 'draft').length;
     const submittedCount = src.filter(e => e.status === 'submitted').length;
     const totalCommission = src.reduce((sum, e) => sum + (e.totalCommission || 0), 0);
+    // Previous Year Outstanding = sum of April entries' previousMonthOutstanding (carry-forward from prev FY March)
+    const prevYearOutstanding = src
+      .filter(e => e.month === 'apr')
+      .reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0);
     // Total Outstanding = sum of each client's latest month outstanding only
     const latestByClient = {};
     src.forEach(e => {
@@ -228,7 +232,7 @@ function ReportsPanel({ onClose }) {
     const totalSoundEx = src.reduce((sum, e) => sum + (e.soundExchangeAmount || 0), 0);
     const totalPpl = src.reduce((sum, e) => sum + (e.pplAmount || 0), 0);
 
-    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl };
+    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl };
   }, [clients, entries, dashboardClient]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
@@ -505,6 +509,10 @@ function ReportsPanel({ onClose }) {
               </div>
             </div>
             <div className="stats-grid">
+              <div className="stat-card" style={{ '--card-accent': 'var(--accent-orange)' }}>
+                <div className="stat-label">Previous Year Outstanding</div>
+                <div className="stat-value">{formatCurrency(dashboardStats.prevYearOutstanding)}</div>
+              </div>
               <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
                 <div className="stat-label">Total Commission</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalCommission)}</div>

@@ -117,11 +117,11 @@ function BillingForm() {
             </div>
             <div>
               <div className="section-title">Configurable Rates</div>
-              <div className="section-subtitle">Set commission rate and GST rate for this client</div>
+              <div className="section-subtitle">Commission rate and GST rate set during client creation</div>
             </div>
           </div>
           <div className="input-grid">
-            <div className="input-group">
+            <div className="input-group calculated">
               <label>Commission Rate (%)</label>
               <div className="input-prefix">
                 <span>%</span>
@@ -129,14 +129,11 @@ function BillingForm() {
                   type="number"
                   name="commissionRate"
                   value={formData.commissionRate}
-                  onChange={handleInputChange}
-                  placeholder="0"
-                  step="0.01"
-                  disabled={isReadOnly}
+                  readOnly
                 />
               </div>
             </div>
-            <div className="input-group">
+            <div className="input-group calculated">
               <label>GST Rate (%)</label>
               <div className="input-prefix">
                 <span>%</span>
@@ -144,10 +141,7 @@ function BillingForm() {
                   type="number"
                   name="gstRate"
                   value={formData.gstRate}
-                  onChange={handleInputChange}
-                  placeholder="18"
-                  step="0.01"
-                  disabled={isReadOnly}
+                  readOnly
                 />
               </div>
             </div>
@@ -181,7 +175,7 @@ function BillingForm() {
           </div>
           <div className="input-grid">
             <div className="input-group">
-              <label>IPRS Amount</label>
+              <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="iprsAmount" value={formData.iprsAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
@@ -199,31 +193,31 @@ function BillingForm() {
               </div>
             </div>
             <div className="input-group">
-              <label>PRS Amount (INR)</label>
+              <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="prsAmount" value={formData.prsAmount} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
               </div>
             </div>
             <div className="input-group">
-              <label>Sound Exchange Amount</label>
+              <label>Sound Exchange Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="soundExchangeAmount" value={formData.soundExchangeAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
             </div>
             <div className="input-group">
-              <label>ISAMRA Amount</label>
+              <label>ISAMRA Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="isamraAmount" value={formData.isamraAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
             </div>
             <div className="input-group">
-              <label>ASCAP Amount</label>
+              <label>ASCAP Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="ascapAmount" value={formData.ascapAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
             </div>
             <div className="input-group">
-              <label>PPL Amount</label>
+              <label>PPL Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" name="pplAmount" value={formData.pplAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
