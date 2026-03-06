@@ -494,86 +494,194 @@ function ReportsPanel({ onClose }) {
     const sel = selectedExportSections;
     const fmtNum = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
 
+    // ── Payment status analysis per entry ──
+    const entryPaymentStatus = ee.map(e => {
+      const commission = e.totalCommission || 0;
+      const totalPaid = (e.currentMonthReceipt || 0) + (e.currentMonthTds || 0) + (e.previousMonthReceipt || 0) + (e.previousMonthTds || 0);
+      const shortfall = Math.max(0, commission - totalPaid);
+      // per-source: which royalty sources have unpaid commissions
+      const sources = [
+        { name: 'IPRS', amount: e.iprsAmount || 0, comm: e.iprsCommission || 0 },
+        { name: 'PRS', amount: e.prsAmount || 0, comm: e.prsCommission || 0 },
+        { name: 'Sound Exchange', amount: e.soundExchangeAmount || 0, comm: e.soundExchangeCommission || 0 },
+        { name: 'ISAMRA', amount: e.isamraAmount || 0, comm: e.isamraCommission || 0 },
+        { name: 'ASCAP', amount: e.ascapAmount || 0, comm: e.ascapCommission || 0 },
+        { name: 'PPL', amount: e.pplAmount || 0, comm: e.pplCommission || 0 },
+      ];
+      let status = 'none'; // no commission
+      if (commission > 0) {
+        if (totalPaid <= 0) status = 'unpaid';
+        else if (totalPaid < commission) status = 'partial';
+        else status = 'paid';
+      }
+      return { ...e, commission, totalPaid, shortfall, status, sources };
+    });
+
+    // Color constants
+    const RED_BG = [255, 230, 230];       // light red
+    const RED_TEXT = [180, 30, 30];        // dark red
+    const ORANGE_BG = [255, 243, 224];     // light orange
+    const ORANGE_TEXT = [180, 100, 0];     // dark orange
+    const GREEN_BG = [230, 255, 230];      // light green
+    const GREEN_TEXT = [30, 130, 30];      // dark green
+    const GRAY_BG = [229, 231, 235];
+
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     let isFirstSection = true;
 
-    const addSectionHeader = (sectionTitle) => {
+    const addSectionHeader = (sectionTitle, subtitle) => {
       if (!isFirstSection) doc.addPage();
       isFirstSection = false;
-      // Title
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(40, 40, 40);
       doc.text(titleLine, 14, 18);
-      // Info line
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.text(infoLine, 14, 25);
-      // Section title
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(60, 60, 60);
       doc.text(sectionTitle, 14, 34);
+      if (subtitle) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(140, 140, 140);
+        doc.text(subtitle, 14, 39);
+      }
+    };
+
+    const getStatusColor = (idx) => {
+      if (idx >= ee.length) return null; // TOTAL row
+      const ps = entryPaymentStatus[idx];
+      if (!ps) return null;
+      return ps.status;
     };
 
     const autoTableDefaults = {
-      startY: 38,
+      startY: 42,
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', halign: 'right' },
       headStyles: { fillColor: [55, 65, 81], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
       columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
       alternateRowStyles: { fillColor: [245, 247, 250] },
-      didParseCell: (data) => {
-        // Bold the TOTAL row
-        if (data.row.index === data.table.body.length - 1 && data.cell.raw && String(data.cell.raw).includes('TOTAL')) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [229, 231, 235];
-        }
-        if (data.row.raw && data.row.raw[0] === 'TOTAL') {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [229, 231, 235];
-        }
-      },
       margin: { left: 14, right: 14 },
+    };
+
+    // Shared cell parser that marks TOTAL row + applies payment status colors
+    const makeDidParseCell = (opts = {}) => (data) => {
+      const { colorAmountCells, colorFullRow, sourceColumns } = opts;
+      // TOTAL row styling
+      if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = GRAY_BG;
+        return;
+      }
+      const status = getStatusColor(data.row.index);
+      if (!status || status === 'none') return;
+
+      // Color the status indicator column (first column: month name)
+      if (colorFullRow && data.section === 'body') {
+        if (status === 'unpaid') {
+          data.cell.styles.fillColor = RED_BG;
+          if (data.column.index > 0) data.cell.styles.textColor = RED_TEXT;
+        } else if (status === 'partial') {
+          data.cell.styles.fillColor = ORANGE_BG;
+          if (data.column.index > 0) data.cell.styles.textColor = ORANGE_TEXT;
+        } else if (status === 'paid') {
+          data.cell.styles.fillColor = GREEN_BG;
+          if (data.column.index > 0) data.cell.styles.textColor = GREEN_TEXT;
+        }
+      }
+
+      if (colorAmountCells && data.section === 'body' && data.column.index > 0) {
+        // Mark individual source amount cells red if that source has unpaid commission
+        const entry = entryPaymentStatus[data.row.index];
+        if (entry && sourceColumns) {
+          const srcIdx = data.column.index - 1; // column 0 is month
+          if (srcIdx >= 0 && srcIdx < sourceColumns.length) {
+            const src = sourceColumns[srcIdx];
+            const srcData = entry.sources.find(s => s.name === src);
+            if (srcData && srcData.amount > 0 && entry.status !== 'paid') {
+              data.cell.styles.fillColor = RED_BG;
+              data.cell.styles.textColor = RED_TEXT;
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
+      }
     };
 
     let sectionCount = 0;
 
-    // 1. Royalty Amounts
+    // ── 1. Royalty Amounts (red-mark unpaid source cells) ──
     if (sel.royalty) {
-      addSectionHeader('Royalty Amounts');
+      addSectionHeader('Royalty Amounts', 'RED cells = royalty source with unpaid commission contributing to outstanding');
+      const sourceNames = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
       const head = [['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL']];
       const body = ee.map(e => [m(e), fmtNum(e.iprsAmount), fmtNum(e.prsAmount), fmtNum(e.soundExchangeAmount), fmtNum(e.isamraAmount), fmtNum(e.ascapAmount), fmtNum(e.pplAmount)]);
       if (s) body.push(['TOTAL', fmtNum(s.iprsAmount), fmtNum(s.prsAmount), fmtNum(s.soundExchangeAmount), fmtNum(s.isamraAmount), fmtNum(s.ascapAmount), fmtNum(s.pplAmount)]);
-      autoTable(doc, { ...autoTableDefaults, head, body });
+      autoTable(doc, { ...autoTableDefaults, head, body, didParseCell: makeDidParseCell({ colorAmountCells: true, sourceColumns: sourceNames }) });
       sectionCount++;
     }
 
-    // 2. Commission Breakdown
+    // ── 2. Commission Breakdown (red-mark unpaid commission cells) ──
     if (sel.commission) {
-      addSectionHeader('Commission Breakdown');
+      addSectionHeader('Commission Breakdown', 'RED = unpaid commission | ORANGE = partially paid | GREEN = fully paid');
+      const commSources = ['_rate', 'IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', '_total'];
       const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'Total Comm.']];
       const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.totalCommission)]);
       if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.totalCommission)]);
-      autoTable(doc, { ...autoTableDefaults, head, body });
+
+      autoTable(doc, {
+        ...autoTableDefaults, head, body,
+        didParseCell: (data) => {
+          if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = GRAY_BG;
+            return;
+          }
+          const status = getStatusColor(data.row.index);
+          if (!status || status === 'none' || data.section !== 'body') return;
+          const entry = entryPaymentStatus[data.row.index];
+          if (!entry) return;
+
+          // Color the Total Commission column (last col = 8)
+          if (data.column.index === 8) {
+            if (status === 'unpaid') { data.cell.styles.fillColor = RED_BG; data.cell.styles.textColor = RED_TEXT; data.cell.styles.fontStyle = 'bold'; }
+            else if (status === 'partial') { data.cell.styles.fillColor = ORANGE_BG; data.cell.styles.textColor = ORANGE_TEXT; data.cell.styles.fontStyle = 'bold'; }
+            else if (status === 'paid') { data.cell.styles.fillColor = GREEN_BG; data.cell.styles.textColor = GREEN_TEXT; }
+          }
+          // Color individual source commission cells (cols 2-7)
+          if (data.column.index >= 2 && data.column.index <= 7) {
+            const srcNames = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
+            const srcData = entry.sources.find(ss => ss.name === srcNames[data.column.index - 2]);
+            if (srcData && srcData.comm > 0 && status !== 'paid') {
+              data.cell.styles.fillColor = RED_BG;
+              data.cell.styles.textColor = RED_TEXT;
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
+      });
       sectionCount++;
     }
 
-    // 3. GST & Invoice
+    // ── 3. GST & Invoice ──
     if (sel.gst) {
       addSectionHeader('GST & Invoice');
       const head = [['Month', 'Cur. GST Base', 'Cur. GST (18%)', 'Cur. Invoice Total', 'Prev. GST Base', 'Prev. GST (18%)', 'Prev. Invoice Total']];
       const body = ee.map(e => [m(e), fmtNum(e.currentMonthGstBase), fmtNum(e.currentMonthGst), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingGstBase), fmtNum(e.previousOutstandingGst), fmtNum(e.previousOutstandingInvoiceTotal)]);
       if (s) body.push(['TOTAL', fmtNum(s.currentMonthGstBase), fmtNum(s.currentMonthGst), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingGstBase), fmtNum(s.previousOutstandingGst), fmtNum(s.previousOutstandingInvoiceTotal)]);
-      autoTable(doc, { ...autoTableDefaults, head, body });
+      autoTable(doc, { ...autoTableDefaults, head, body, didParseCell: makeDidParseCell({}) });
       sectionCount++;
     }
 
-    // 4. Receipts & TDS
+    // ── 4. Receipts & TDS ──
     if (sel.receipts) {
-      addSectionHeader('Receipts & TDS');
+      addSectionHeader('Receipts & TDS', 'RED row = no payment received for that month\'s commission');
       const head = [['Month', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Total Deductions']];
       const body = ee.map(e => {
         const td = (e.currentMonthReceipt||0)+(e.currentMonthTds||0)+(e.previousMonthReceipt||0)+(e.previousMonthTds||0);
@@ -583,21 +691,21 @@ function ReportsPanel({ onClose }) {
         const totalDed = s.currentMonthReceipt + s.currentMonthTds + s.previousMonthReceipt + s.previousMonthTds;
         body.push(['TOTAL', fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(totalDed)]);
       }
-      autoTable(doc, { ...autoTableDefaults, head, body });
+      autoTable(doc, { ...autoTableDefaults, head, body, didParseCell: makeDidParseCell({ colorFullRow: true }) });
       sectionCount++;
     }
 
-    // 5. Outstanding Tracking
+    // ── 5. Outstanding Tracking (full row coloring) ──
     if (sel.outstanding) {
-      addSectionHeader('Outstanding Tracking');
+      addSectionHeader('Outstanding Tracking', 'RED = unpaid (adds to O/S) | ORANGE = partially paid | GREEN = fully settled');
       const head = [['Month', 'Prev O/S', 'Total Comm.', 'Cur. Inv.', 'Prev. Inv.', 'Cur. Rcpt', 'Cur. TDS', 'Prev. Rcpt', 'Prev. TDS', 'Inv. Pending', 'Prev. Inv. Pend.', 'Monthly O/S', 'Total O/S']];
       const body = ee.map(e => [m(e), fmtNum(e.previousMonthOutstanding), fmtNum(e.totalCommission), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingInvoiceTotal), fmtNum(e.currentMonthReceipt), fmtNum(e.currentMonthTds), fmtNum(e.previousMonthReceipt), fmtNum(e.previousMonthTds), fmtNum(e.invoicePendingCurrentMonth), fmtNum(e.previousInvoicePending), fmtNum(e.monthlyOutstanding), fmtNum(e.totalOutstanding)]);
       if (s) body.push(['TOTAL', fmtNum(s.previousMonthOutstanding), fmtNum(s.totalCommission), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingInvoiceTotal), fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(s.invoicePendingCurrentMonth), fmtNum(s.previousInvoicePending), fmtNum(s.monthlyOutstanding), fmtNum(s.totalOutstanding)]);
-      autoTable(doc, { ...autoTableDefaults, head, body, styles: { ...autoTableDefaults.styles, fontSize: 7 } });
+      autoTable(doc, { ...autoTableDefaults, head, body, styles: { ...autoTableDefaults.styles, fontSize: 7 }, didParseCell: makeDidParseCell({ colorFullRow: true }) });
       sectionCount++;
     }
 
-    // 6. Final Summary
+    // ── 6. Final Summary + Payment Status Analysis ──
     if (sel.summary && s) {
       addSectionHeader('Final Summary');
       const totalReceipts = (s.currentMonthReceipt||0) + (s.previousMonthReceipt||0);
@@ -620,13 +728,20 @@ function ReportsPanel({ onClose }) {
         didParseCell: (data) => {
           if (data.row.index === summaryBody.length - 1) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [229, 231, 235];
+            data.cell.styles.fillColor = [255, 220, 220];
+            data.cell.styles.textColor = RED_TEXT;
             data.cell.styles.fontSize = 10;
+          }
+          // Color add/subtract rows
+          if (data.section === 'body' && data.column.index === 1) {
+            if (data.row.index === 0 && (s.previousMonthOutstanding || 0) > 0) { data.cell.styles.textColor = ORANGE_TEXT; }
+            if (data.row.index === 1 || data.row.index === 2) { data.cell.styles.textColor = [30, 130, 30]; }
+            if (data.row.index === 3 || data.row.index === 4) { data.cell.styles.textColor = RED_TEXT; }
           }
         },
       });
 
-      // Royalty Breakdown sub-table
+      // ── Royalty Breakdown ──
       const finalY = doc.lastAutoTable.finalY + 10;
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
@@ -651,10 +766,134 @@ function ReportsPanel({ onClose }) {
         didParseCell: (data) => {
           if (data.row.index === breakdownBody.length - 1) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [229, 231, 235];
+            data.cell.styles.fillColor = GRAY_BG;
           }
         },
       });
+
+      // ── NEW: Payment Status Analysis page ──
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text(titleLine, 14, 18);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(infoLine, 14, 25);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 30, 30);
+      doc.text('Payment Status Analysis — Outstanding Breakdown', 14, 34);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      doc.text('This section explains WHY the outstanding amount is what it is. RED = unpaid, ORANGE = partially paid, GREEN = fully settled.', 14, 39);
+
+      // Build analysis body
+      const analysisHead = [['Month', 'Commission Earned', 'Receipts + TDS Paid', 'Shortfall (Unpaid)', 'Unpaid Sources', 'Status']];
+      const analysisBody = entryPaymentStatus.map(e => {
+        const unpaidSources = e.sources.filter(src => src.comm > 0 && e.status !== 'paid').map(src => `${src.name} (${fmtNum(src.comm)})`).join(', ') || '-';
+        const statusLabel = e.status === 'unpaid' ? 'UNPAID' : e.status === 'partial' ? 'PARTIAL' : e.status === 'paid' ? 'PAID' : '-';
+        return [m(e), fmtNum(e.commission), fmtNum(e.totalPaid), fmtNum(e.shortfall), unpaidSources, statusLabel];
+      });
+
+      // Add totals
+      const totalComm = entryPaymentStatus.reduce((a, e) => a + e.commission, 0);
+      const totalPaidAll = entryPaymentStatus.reduce((a, e) => a + e.totalPaid, 0);
+      const totalShortfall = entryPaymentStatus.reduce((a, e) => a + e.shortfall, 0);
+      analysisBody.push(['TOTAL', fmtNum(totalComm), fmtNum(totalPaidAll), fmtNum(totalShortfall), '', '']);
+
+      autoTable(doc, {
+        ...autoTableDefaults,
+        head: analysisHead,
+        body: analysisBody,
+        columnStyles: {
+          0: { halign: 'left', fontStyle: 'bold', cellWidth: 30 },
+          1: { halign: 'right', cellWidth: 35 },
+          2: { halign: 'right', cellWidth: 35 },
+          3: { halign: 'right', cellWidth: 35 },
+          4: { halign: 'left', cellWidth: 100, fontSize: 7 },
+          5: { halign: 'center', cellWidth: 25 },
+        },
+        didParseCell: (data) => {
+          if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = GRAY_BG;
+            return;
+          }
+          if (data.section !== 'body' || data.row.index >= ee.length) return;
+          const ps = entryPaymentStatus[data.row.index];
+          if (!ps) return;
+
+          // Status column coloring
+          if (data.column.index === 5) {
+            if (ps.status === 'unpaid') { data.cell.styles.fillColor = RED_BG; data.cell.styles.textColor = RED_TEXT; data.cell.styles.fontStyle = 'bold'; }
+            else if (ps.status === 'partial') { data.cell.styles.fillColor = ORANGE_BG; data.cell.styles.textColor = ORANGE_TEXT; data.cell.styles.fontStyle = 'bold'; }
+            else if (ps.status === 'paid') { data.cell.styles.fillColor = GREEN_BG; data.cell.styles.textColor = GREEN_TEXT; data.cell.styles.fontStyle = 'bold'; }
+          }
+          // Shortfall column red if > 0
+          if (data.column.index === 3 && ps.shortfall > 0) {
+            data.cell.styles.fillColor = RED_BG;
+            data.cell.styles.textColor = RED_TEXT;
+            data.cell.styles.fontStyle = 'bold';
+          }
+          // Unpaid sources column red if unpaid
+          if (data.column.index === 4 && ps.status !== 'paid' && ps.status !== 'none') {
+            data.cell.styles.textColor = RED_TEXT;
+          }
+          // Full row tint
+          if (ps.status === 'unpaid') {
+            data.cell.styles.fillColor = RED_BG;
+          } else if (ps.status === 'partial') {
+            data.cell.styles.fillColor = ORANGE_BG;
+          } else if (ps.status === 'paid') {
+            data.cell.styles.fillColor = GREEN_BG;
+          }
+        },
+      });
+
+      // Outstanding explanation text below table
+      const explainY = doc.lastAutoTable.finalY + 8;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 30, 30);
+      const openingBal = s.previousMonthOutstanding || 0;
+      doc.text(`Outstanding Explanation:`, 14, explainY);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+      const lines = [
+        `Opening Balance (Carry-Forward from previous FY): ${fmtNum(openingBal)}`,
+        `Total Commission Earned this FY: ${fmtNum(totalComm)}`,
+        `Total Payments Received (Receipts + TDS): ${fmtNum(totalPaidAll)}`,
+        `Unpaid Commission (Shortfall): ${fmtNum(totalShortfall)}`,
+        `Final Outstanding = Opening Balance + Shortfall = ${fmtNum(openingBal)} + ${fmtNum(totalShortfall)} = ${fmtNum(s.totalOutstanding)}`,
+      ];
+      lines.forEach((line, i) => {
+        if (i === lines.length - 1) { doc.setFont('helvetica', 'bold'); doc.setTextColor(180, 30, 30); }
+        doc.text(line, 14, explainY + 6 + (i * 5));
+      });
+
+      // Legend
+      const legendY = explainY + 6 + (lines.length * 5) + 8;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(60, 60, 60);
+      doc.text('Color Legend:', 14, legendY);
+      const legends = [
+        { color: RED_BG, label: 'RED — Unpaid: Commission earned but no payment received', textColor: RED_TEXT },
+        { color: ORANGE_BG, label: 'ORANGE — Partial: Payment received but less than commission', textColor: ORANGE_TEXT },
+        { color: GREEN_BG, label: 'GREEN — Paid: Commission fully settled', textColor: GREEN_TEXT },
+      ];
+      legends.forEach((lg, i) => {
+        const y = legendY + 5 + (i * 6);
+        doc.setFillColor(...lg.color);
+        doc.rect(14, y - 3, 4, 4, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...lg.textColor);
+        doc.text(lg.label, 20, y);
+      });
+
       sectionCount++;
     }
 
