@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -144,6 +146,15 @@ function ReportsPanel({ onClose }) {
   const [clientReportSearch, setClientReportSearch] = useState('');
   const [clientReportDropdownOpen, setClientReportDropdownOpen] = useState(false);
   const clientReportDropdownRef = useRef(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedExportSections, setSelectedExportSections] = useState({
+    royalty: true,
+    commission: true,
+    gst: true,
+    receipts: true,
+    outstanding: true,
+    summary: true,
+  });
 
   // Proper outside click handler for dashboard filter dropdown
   useEffect(() => {
@@ -468,6 +479,209 @@ function ReportsPanel({ onClose }) {
     }
 
     XLSX.writeFile(wb, `MRM_Detailed_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+  };
+
+  const exportSelectedSectionsPDF = () => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const titleLine = `${clientName} (${clientReportClient}) — ${fyLabel}`;
+    const infoLine = `Commission: ${clientObj?.commissionRate || 0}% | Type: ${clientObj?.type || 'N/A'}`;
+    const s = clientReportSummary;
+    const ee = clientReportEntries;
+    const m = (e) => `${monthLabels[e.month]} ${e.year}`;
+    const sel = selectedExportSections;
+    const fmtNum = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    let isFirstSection = true;
+
+    const addSectionHeader = (sectionTitle) => {
+      if (!isFirstSection) doc.addPage();
+      isFirstSection = false;
+      // Title
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text(titleLine, 14, 18);
+      // Info line
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(infoLine, 14, 25);
+      // Section title
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(60, 60, 60);
+      doc.text(sectionTitle, 14, 34);
+    };
+
+    const autoTableDefaults = {
+      startY: 38,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak', halign: 'right' },
+      headStyles: { fillColor: [55, 65, 81], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      didParseCell: (data) => {
+        // Bold the TOTAL row
+        if (data.row.index === data.table.body.length - 1 && data.cell.raw && String(data.cell.raw).includes('TOTAL')) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [229, 231, 235];
+        }
+        if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [229, 231, 235];
+        }
+      },
+      margin: { left: 14, right: 14 },
+    };
+
+    let sectionCount = 0;
+
+    // 1. Royalty Amounts
+    if (sel.royalty) {
+      addSectionHeader('Royalty Amounts');
+      const head = [['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL']];
+      const body = ee.map(e => [m(e), fmtNum(e.iprsAmount), fmtNum(e.prsAmount), fmtNum(e.soundExchangeAmount), fmtNum(e.isamraAmount), fmtNum(e.ascapAmount), fmtNum(e.pplAmount)]);
+      if (s) body.push(['TOTAL', fmtNum(s.iprsAmount), fmtNum(s.prsAmount), fmtNum(s.soundExchangeAmount), fmtNum(s.isamraAmount), fmtNum(s.ascapAmount), fmtNum(s.pplAmount)]);
+      autoTable(doc, { ...autoTableDefaults, head, body });
+      sectionCount++;
+    }
+
+    // 2. Commission Breakdown
+    if (sel.commission) {
+      addSectionHeader('Commission Breakdown');
+      const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'Total Comm.']];
+      const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.totalCommission)]);
+      if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.totalCommission)]);
+      autoTable(doc, { ...autoTableDefaults, head, body });
+      sectionCount++;
+    }
+
+    // 3. GST & Invoice
+    if (sel.gst) {
+      addSectionHeader('GST & Invoice');
+      const head = [['Month', 'Cur. GST Base', 'Cur. GST (18%)', 'Cur. Invoice Total', 'Prev. GST Base', 'Prev. GST (18%)', 'Prev. Invoice Total']];
+      const body = ee.map(e => [m(e), fmtNum(e.currentMonthGstBase), fmtNum(e.currentMonthGst), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingGstBase), fmtNum(e.previousOutstandingGst), fmtNum(e.previousOutstandingInvoiceTotal)]);
+      if (s) body.push(['TOTAL', fmtNum(s.currentMonthGstBase), fmtNum(s.currentMonthGst), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingGstBase), fmtNum(s.previousOutstandingGst), fmtNum(s.previousOutstandingInvoiceTotal)]);
+      autoTable(doc, { ...autoTableDefaults, head, body });
+      sectionCount++;
+    }
+
+    // 4. Receipts & TDS
+    if (sel.receipts) {
+      addSectionHeader('Receipts & TDS');
+      const head = [['Month', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Total Deductions']];
+      const body = ee.map(e => {
+        const td = (e.currentMonthReceipt||0)+(e.currentMonthTds||0)+(e.previousMonthReceipt||0)+(e.previousMonthTds||0);
+        return [m(e), fmtNum(e.currentMonthReceipt), fmtNum(e.currentMonthTds), fmtNum(e.previousMonthReceipt), fmtNum(e.previousMonthTds), fmtNum(td)];
+      });
+      if (s) {
+        const totalDed = s.currentMonthReceipt + s.currentMonthTds + s.previousMonthReceipt + s.previousMonthTds;
+        body.push(['TOTAL', fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(totalDed)]);
+      }
+      autoTable(doc, { ...autoTableDefaults, head, body });
+      sectionCount++;
+    }
+
+    // 5. Outstanding Tracking
+    if (sel.outstanding) {
+      addSectionHeader('Outstanding Tracking');
+      const head = [['Month', 'Prev O/S', 'Total Comm.', 'Cur. Inv.', 'Prev. Inv.', 'Cur. Rcpt', 'Cur. TDS', 'Prev. Rcpt', 'Prev. TDS', 'Inv. Pending', 'Prev. Inv. Pend.', 'Monthly O/S', 'Total O/S']];
+      const body = ee.map(e => [m(e), fmtNum(e.previousMonthOutstanding), fmtNum(e.totalCommission), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingInvoiceTotal), fmtNum(e.currentMonthReceipt), fmtNum(e.currentMonthTds), fmtNum(e.previousMonthReceipt), fmtNum(e.previousMonthTds), fmtNum(e.invoicePendingCurrentMonth), fmtNum(e.previousInvoicePending), fmtNum(e.monthlyOutstanding), fmtNum(e.totalOutstanding)]);
+      if (s) body.push(['TOTAL', fmtNum(s.previousMonthOutstanding), fmtNum(s.totalCommission), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingInvoiceTotal), fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(s.invoicePendingCurrentMonth), fmtNum(s.previousInvoicePending), fmtNum(s.monthlyOutstanding), fmtNum(s.totalOutstanding)]);
+      autoTable(doc, { ...autoTableDefaults, head, body, styles: { ...autoTableDefaults.styles, fontSize: 7 } });
+      sectionCount++;
+    }
+
+    // 6. Final Summary
+    if (sel.summary && s) {
+      addSectionHeader('Final Summary');
+      const totalReceipts = (s.currentMonthReceipt||0) + (s.previousMonthReceipt||0);
+      const totalTds = (s.currentMonthTds||0) + (s.previousMonthTds||0);
+      const totalInvoiced = (s.currentMonthInvoiceTotal||0) + (s.previousOutstandingInvoiceTotal||0);
+
+      const summaryBody = [
+        ['Opening Balance (Carry-Forward)', fmtNum(s.previousMonthOutstanding)],
+        ['(+) Total Commission Earned', fmtNum(s.totalCommission)],
+        ['(+) Total GST Invoiced', fmtNum(totalInvoiced)],
+        ['(\u2212) Total Receipts Received', fmtNum(totalReceipts)],
+        ['(\u2212) Total TDS Deducted', fmtNum(totalTds)],
+        ['(=) Final Outstanding', fmtNum(s.totalOutstanding)],
+      ];
+      autoTable(doc, {
+        ...autoTableDefaults,
+        head: [['Description', 'Amount (INR)']],
+        body: summaryBody,
+        columnStyles: { 0: { halign: 'left', cellWidth: 120 }, 1: { halign: 'right', cellWidth: 60 } },
+        didParseCell: (data) => {
+          if (data.row.index === summaryBody.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [229, 231, 235];
+            data.cell.styles.fontSize = 10;
+          }
+        },
+      });
+
+      // Royalty Breakdown sub-table
+      const finalY = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(60, 60, 60);
+      doc.text('Royalty Breakdown', 14, finalY);
+
+      const breakdownBody = [
+        ['IPRS', fmtNum(s.iprsAmount), fmtNum(s.iprsCommission)],
+        ['PRS', fmtNum(s.prsAmount), fmtNum(s.prsCommission)],
+        ['Sound Exchange', fmtNum(s.soundExchangeAmount), fmtNum(s.soundExchangeCommission)],
+        ['ISAMRA', fmtNum(s.isamraAmount), fmtNum(s.isamraCommission)],
+        ['ASCAP', fmtNum(s.ascapAmount), fmtNum(s.ascapCommission)],
+        ['PPL', fmtNum(s.pplAmount), fmtNum(s.pplCommission)],
+        ['Total', fmtNum((s.iprsAmount||0)+(s.prsAmount||0)+(s.soundExchangeAmount||0)+(s.isamraAmount||0)+(s.ascapAmount||0)+(s.pplAmount||0)), fmtNum(s.totalCommission)],
+      ];
+      autoTable(doc, {
+        ...autoTableDefaults,
+        startY: finalY + 3,
+        head: [['Source', 'Amount', 'Commission']],
+        body: breakdownBody,
+        columnStyles: { 0: { halign: 'left', cellWidth: 60 }, 1: { halign: 'right', cellWidth: 60 }, 2: { halign: 'right', cellWidth: 60 } },
+        didParseCell: (data) => {
+          if (data.row.index === breakdownBody.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [229, 231, 235];
+          }
+        },
+      });
+      sectionCount++;
+    }
+
+    if (sectionCount === 0) return;
+
+    // Add page numbers
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${i} of ${totalPages}`, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text('MRM Billing Report', 14, doc.internal.pageSize.getHeight() - 8);
+    }
+
+    const selectedNames = [];
+    if (sel.royalty) selectedNames.push('Royalty');
+    if (sel.commission) selectedNames.push('Comm');
+    if (sel.gst) selectedNames.push('GST');
+    if (sel.receipts) selectedNames.push('Rcpt');
+    if (sel.outstanding) selectedNames.push('OS');
+    if (sel.summary) selectedNames.push('Sum');
+    const suffix = sectionCount === 6 ? 'Full' : selectedNames.join('_');
+
+    doc.save(`MRM_Report_${suffix}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
+    setShowExportModal(false);
   };
 
   const exportSingleTableExcel = (sheetName, headers, rows) => {
@@ -906,6 +1120,15 @@ function ReportsPanel({ onClose }) {
                       <line x1="16" y1="17" x2="8" y2="17"></line>
                     </svg>
                     Export Detailed
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => setShowExportModal(true)}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    Export PDF
                   </button>
                 </div>
               )}
@@ -1361,6 +1584,84 @@ function ReportsPanel({ onClose }) {
                   })()}
                 </div>
               </>
+            )}
+
+            {/* Custom Export Modal */}
+            {showExportModal && (
+              <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+                <div className="modal" style={{ maxWidth: 480 }}>
+                  <div className="modal-header">
+                    <h3>Export PDF</h3>
+                    <button className="modal-close" onClick={() => setShowExportModal(false)}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16 }}>
+                      Select which sections to include in the exported PDF file:
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedExportSections({ royalty: true, commission: true, gst: true, receipts: true, outstanding: true, summary: true })}
+                      >Select All</button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedExportSections({ royalty: false, commission: false, gst: false, receipts: false, outstanding: false, summary: false })}
+                      >Deselect All</button>
+                    </div>
+                    {[
+                      { key: 'royalty', label: 'Royalty Amounts', desc: 'IPRS, PRS, Sound Exchange, ISAMRA, ASCAP, PPL', icon: '🎵' },
+                      { key: 'commission', label: 'Commission Breakdown', desc: 'Commission rates and per-source commissions', icon: '💰' },
+                      { key: 'gst', label: 'GST & Invoice', desc: 'GST base, GST amount, invoice totals', icon: '🧾' },
+                      { key: 'receipts', label: 'Receipts & TDS', desc: 'Current/previous receipts and TDS deductions', icon: '📥' },
+                      { key: 'outstanding', label: 'Outstanding Tracking', desc: 'Monthly and total outstanding with carry-forward', icon: '📊' },
+                      { key: 'summary', label: 'Final Summary', desc: 'Overview with royalty breakdown', icon: '📋' },
+                    ].map(section => (
+                      <label
+                        key={section.key}
+                        className="export-section-item"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                          background: selectedExportSections[section.key] ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-input)',
+                          border: `1px solid ${selectedExportSections[section.key] ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                          borderRadius: 10, marginBottom: 8, cursor: 'pointer', transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedExportSections[section.key]}
+                          onChange={() => setSelectedExportSections(prev => ({ ...prev, [section.key]: !prev[section.key] }))}
+                          style={{ width: 18, height: 18, accentColor: 'var(--accent-primary)', cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: 20, flexShrink: 0 }}>{section.icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{section.label}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{section.desc}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-secondary" onClick={() => setShowExportModal(false)}>Cancel</button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={!Object.values(selectedExportSections).some(Boolean)}
+                      onClick={exportSelectedSectionsPDF}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                      </svg>
+                      Export PDF ({Object.values(selectedExportSections).filter(Boolean).length} sections)
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
