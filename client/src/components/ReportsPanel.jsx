@@ -630,7 +630,6 @@ function ReportsPanel({ onClose }) {
     // ── 2. Commission Breakdown (red-mark unpaid commission cells) ──
     if (sel.commission) {
       addSectionHeader('Commission Breakdown', 'RED = unpaid commission | ORANGE = partially paid | GREEN = fully paid');
-      const commSources = ['_rate', 'IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', '_total'];
       const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'Total Comm.']];
       const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.totalCommission)]);
       if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.totalCommission)]);
