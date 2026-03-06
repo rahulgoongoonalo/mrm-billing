@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
+import * as XLSX from 'xlsx';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -139,12 +140,19 @@ function ReportsPanel({ onClose }) {
   const [dashboardDropdownOpen, setDashboardDropdownOpen] = useState(false);
   const dashboardDropdownRef = useRef(null);
   const [outstandingSortDesc, setOutstandingSortDesc] = useState(false);
+  const [clientReportClient, setClientReportClient] = useState(null);
+  const [clientReportSearch, setClientReportSearch] = useState('');
+  const [clientReportDropdownOpen, setClientReportDropdownOpen] = useState(false);
+  const clientReportDropdownRef = useRef(null);
 
   // Proper outside click handler for dashboard filter dropdown
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dashboardDropdownRef.current && !dashboardDropdownRef.current.contains(e.target)) {
         setDashboardDropdownOpen(false);
+      }
+      if (clientReportDropdownRef.current && !clientReportDropdownRef.current.contains(e.target)) {
+        setClientReportDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -236,6 +244,245 @@ function ReportsPanel({ onClose }) {
   }, [clients, entries, dashboardClient]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
+
+  // Client Report data: all entries for selected client, sorted by FY order
+  const clientReportEntries = useMemo(() => {
+    if (!clientReportClient) return [];
+    return entries
+      .filter(e => e.clientId === clientReportClient)
+      .sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return FY_ORDER[a.month] - FY_ORDER[b.month];
+      });
+  }, [entries, clientReportClient]);
+
+  const clientReportSummary = useMemo(() => {
+    const e = clientReportEntries;
+    if (e.length === 0) return null;
+    const sum = (fn) => e.reduce((s, x) => s + (fn(x) || 0), 0);
+    const last = e[e.length - 1];
+    const first = e[0];
+    return {
+      iprsAmount: sum(x => x.iprsAmount),
+      prsAmount: sum(x => x.prsAmount),
+      soundExchangeAmount: sum(x => x.soundExchangeAmount),
+      isamraAmount: sum(x => x.isamraAmount),
+      ascapAmount: sum(x => x.ascapAmount),
+      pplAmount: sum(x => x.pplAmount),
+      iprsCommission: sum(x => x.iprsCommission),
+      prsCommission: sum(x => x.prsCommission),
+      soundExchangeCommission: sum(x => x.soundExchangeCommission),
+      isamraCommission: sum(x => x.isamraCommission),
+      ascapCommission: sum(x => x.ascapCommission),
+      pplCommission: sum(x => x.pplCommission),
+      totalCommission: sum(x => x.totalCommission),
+      currentMonthGstBase: sum(x => x.currentMonthGstBase),
+      currentMonthGst: sum(x => x.currentMonthGst),
+      currentMonthInvoiceTotal: sum(x => x.currentMonthInvoiceTotal),
+      previousOutstandingGstBase: sum(x => x.previousOutstandingGstBase),
+      previousOutstandingGst: sum(x => x.previousOutstandingGst),
+      previousOutstandingInvoiceTotal: sum(x => x.previousOutstandingInvoiceTotal),
+      currentMonthReceipt: sum(x => x.currentMonthReceipt),
+      currentMonthTds: sum(x => x.currentMonthTds),
+      previousMonthReceipt: sum(x => x.previousMonthReceipt),
+      previousMonthTds: sum(x => x.previousMonthTds),
+      monthlyOutstanding: sum(x => x.monthlyOutstanding),
+      totalOutstanding: last.totalOutstanding || 0,
+      previousMonthOutstanding: first.previousMonthOutstanding || 0,
+      invoicePendingCurrentMonth: sum(x => x.invoicePendingCurrentMonth),
+      previousInvoicePending: sum(x => x.previousInvoicePending),
+    };
+  }, [clientReportEntries]);
+
+  const exportClientReportExcel = () => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const safeName = clientName.replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 31);
+
+    const headers = [
+      'Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL',
+      'Commission Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.',
+      'Total Commission',
+      'Cur. GST Base', 'Cur. GST', 'Cur. Invoice Total',
+      'Prev. GST Base', 'Prev. GST', 'Prev. Invoice Total',
+      'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS',
+      'Prev. Month O/S (Carry-Forward)', 'Invoice Pending (Current)', 'Prev. Invoice Pending',
+      'Monthly Outstanding', 'Total Outstanding', 'Status'
+    ];
+
+    const dataRows = clientReportEntries.map(e => [
+      `${monthLabels[e.month]} ${e.year}`,
+      e.iprsAmount || 0, e.prsAmount || 0, e.soundExchangeAmount || 0, e.isamraAmount || 0, e.ascapAmount || 0, e.pplAmount || 0,
+      `${e.commissionRate || 0}%`,
+      e.iprsCommission || 0, e.prsCommission || 0, e.soundExchangeCommission || 0, e.isamraCommission || 0, e.ascapCommission || 0, e.pplCommission || 0,
+      e.totalCommission || 0,
+      e.currentMonthGstBase || 0, e.currentMonthGst || 0, e.currentMonthInvoiceTotal || 0,
+      e.previousOutstandingGstBase || 0, e.previousOutstandingGst || 0, e.previousOutstandingInvoiceTotal || 0,
+      e.currentMonthReceipt || 0, e.currentMonthTds || 0, e.previousMonthReceipt || 0, e.previousMonthTds || 0,
+      e.previousMonthOutstanding || 0, e.invoicePendingCurrentMonth || 0, e.previousInvoicePending || 0,
+      e.monthlyOutstanding || 0, e.totalOutstanding || 0, e.status || ''
+    ]);
+
+    // Add totals row
+    if (clientReportSummary) {
+      const s = clientReportSummary;
+      dataRows.push([
+        'TOTAL',
+        s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount,
+        '',
+        s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission,
+        s.totalCommission,
+        s.currentMonthGstBase, s.currentMonthGst, s.currentMonthInvoiceTotal,
+        s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal,
+        s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds,
+        s.previousMonthOutstanding, s.invoicePendingCurrentMonth, s.previousInvoicePending,
+        s.monthlyOutstanding, s.totalOutstanding, ''
+      ]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      [`Client Report: ${clientName} (${clientReportClient})`],
+      [`FY ${financialYear.startYear}-${financialYear.endYear}`],
+      [`Commission Rate: ${clientObj?.commissionRate || ''}% | Type: ${clientObj?.type || ''}`],
+      [],
+      headers,
+      ...dataRows
+    ]);
+
+    // Set column widths
+    ws['!cols'] = headers.map((h, i) => ({ wch: i === 0 ? 16 : Math.max(h.length + 2, 14) }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, safeName || 'Client Report');
+    XLSX.writeFile(wb, `MRM_Client_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_FY${financialYear.startYear}-${financialYear.endYear}.xlsx`);
+  };
+
+  // Helper to create a sheet with a title header
+  const makeSheet = (title, subtitle, headers, rows, colWidths) => {
+    const aoa = [
+      [title],
+      [subtitle],
+      [],
+      headers,
+      ...rows
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = colWidths || headers.map((h, i) => ({ wch: i === 0 ? 18 : Math.max(String(h).length + 2, 15) }));
+    return ws;
+  };
+
+  const exportClientReportDetailedExcel = () => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const titleLine = `${clientName} (${clientReportClient}) — ${fyLabel}`;
+    const infoLine = `Commission: ${clientObj?.commissionRate || 0}% | Type: ${clientObj?.type || 'N/A'}`;
+    const s = clientReportSummary;
+    const ee = clientReportEntries;
+    const m = (e) => `${monthLabels[e.month]} ${e.year}`;
+
+    const wb = XLSX.utils.book_new();
+
+    // 1. Royalty Amounts
+    {
+      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
+      const rows = ee.map(e => [m(e), e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0]);
+      if (s) rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount]);
+      XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Royalty Amounts');
+    }
+
+    // 2. Commission Breakdown
+    {
+      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'Total Commission'];
+      const rows = ee.map(e => [m(e), `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.totalCommission||0]);
+      if (s) rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.totalCommission]);
+      XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Commission');
+    }
+
+    // 3. GST & Invoice
+    {
+      const h = ['Month', 'Cur. GST Base', 'Cur. GST (18%)', 'Cur. Invoice Total', 'Prev. GST Base', 'Prev. GST (18%)', 'Prev. Invoice Total'];
+      const rows = ee.map(e => [m(e), e.currentMonthGstBase||0, e.currentMonthGst||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingGstBase||0, e.previousOutstandingGst||0, e.previousOutstandingInvoiceTotal||0]);
+      if (s) rows.push(['TOTAL', s.currentMonthGstBase, s.currentMonthGst, s.currentMonthInvoiceTotal, s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal]);
+      XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'GST & Invoice');
+    }
+
+    // 4. Receipts & TDS
+    {
+      const h = ['Month', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Total Deductions'];
+      const rows = ee.map(e => {
+        const td = (e.currentMonthReceipt||0)+(e.currentMonthTds||0)+(e.previousMonthReceipt||0)+(e.previousMonthTds||0);
+        return [m(e), e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, td];
+      });
+      if (s) {
+        const totalDed = s.currentMonthReceipt + s.currentMonthTds + s.previousMonthReceipt + s.previousMonthTds;
+        rows.push(['TOTAL', s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, totalDed]);
+      }
+      XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Receipts & TDS');
+    }
+
+    // 5. Outstanding Tracking
+    {
+      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Total Outstanding'];
+      const rows = ee.map(e => [m(e), e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.totalOutstanding||0]);
+      if (s) rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, s.totalOutstanding]);
+      XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Outstanding');
+    }
+
+    // 6. Summary sheet
+    {
+      const totalReceipts = (s?.currentMonthReceipt||0) + (s?.previousMonthReceipt||0);
+      const totalTds = (s?.currentMonthTds||0) + (s?.previousMonthTds||0);
+      const totalInvoiced = (s?.currentMonthInvoiceTotal||0) + (s?.previousOutstandingInvoiceTotal||0);
+      const summaryData = [
+        [titleLine],
+        [infoLine],
+        [],
+        ['FINAL SUMMARY'],
+        [],
+        ['Description', 'Amount (INR)'],
+        ['Opening Balance (Carry-Forward)', s?.previousMonthOutstanding || 0],
+        ['(+) Total Commission Earned', s?.totalCommission || 0],
+        ['(+) Total GST Invoiced', totalInvoiced],
+        ['(−) Total Receipts Received', totalReceipts],
+        ['(−) Total TDS Deducted', totalTds],
+        [],
+        ['(=) Final Outstanding', s?.totalOutstanding || 0],
+        [],
+        [],
+        ['ROYALTY BREAKDOWN'],
+        ['Source', 'Amount', 'Commission'],
+        ['IPRS', s?.iprsAmount||0, s?.iprsCommission||0],
+        ['PRS', s?.prsAmount||0, s?.prsCommission||0],
+        ['Sound Exchange', s?.soundExchangeAmount||0, s?.soundExchangeCommission||0],
+        ['ISAMRA', s?.isamraAmount||0, s?.isamraCommission||0],
+        ['ASCAP', s?.ascapAmount||0, s?.ascapCommission||0],
+        ['PPL', s?.pplAmount||0, s?.pplCommission||0],
+        ['Total', (s?.iprsAmount||0)+(s?.prsAmount||0)+(s?.soundExchangeAmount||0)+(s?.isamraAmount||0)+(s?.ascapAmount||0)+(s?.pplAmount||0), s?.totalCommission||0],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(summaryData);
+      ws['!cols'] = [{ wch: 36 }, { wch: 20 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+    }
+
+    XLSX.writeFile(wb, `MRM_Detailed_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+  };
+
+  const exportSingleTableExcel = (sheetName, headers, rows) => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, makeSheet(
+      `${clientName} (${clientReportClient}) — ${fyLabel}`,
+      `Commission: ${clientObj?.commissionRate || 0}% | Type: ${clientObj?.type || 'N/A'}`,
+      headers, rows
+    ), sheetName.substring(0, 31));
+    XLSX.writeFile(wb, `MRM_${sheetName.replace(/[^a-zA-Z0-9]/g, '_')}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+  };
 
   const exportCSV = (reportType) => {
     let csv = '';
@@ -378,6 +625,7 @@ function ReportsPanel({ onClose }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'home' },
     { id: 'client-master', label: 'Client Master', icon: 'users' },
+    { id: 'client-report', label: 'Client Report', icon: 'clipboard' },
     { id: 'commission', label: 'Commission Report', icon: 'percent' },
     { id: 'gst-invoice', label: 'GST & Invoice', icon: 'file-text' },
     { id: 'receipts-tds', label: 'Receipts & TDS', icon: 'credit-card' },
@@ -420,6 +668,7 @@ function ReportsPanel({ onClose }) {
                 {item.icon === 'alert' && <><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></>}
                 {item.icon === 'file-text' && <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></>}
                 {item.icon === 'credit-card' && <><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></>}
+                {item.icon === 'clipboard' && <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></>}
               </svg>
               <span>{item.label}</span>
             </button>
@@ -628,6 +877,491 @@ function ReportsPanel({ onClose }) {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Client Report */}
+        {activeReport === 'client-report' && (
+          <div className="report-section active">
+            <div className="report-page-header">
+              <div className="report-page-title">
+                <h2>Client Report</h2>
+                <p>Detailed monthly summary for a single client — all amounts, commissions, GST, receipts &amp; outstanding</p>
+              </div>
+              {clientReportClient && clientReportEntries.length > 0 && (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn btn-primary" onClick={exportClientReportExcel}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export All-in-One
+                  </button>
+                  <button className="btn btn-success" onClick={exportClientReportDetailedExcel}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    Export Detailed
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Client Selector */}
+            <div className="dashboard-filter-bar" style={{ marginBottom: 24 }}>
+              <div className="dashboard-filter-dropdown" ref={clientReportDropdownRef}>
+                <button className="dashboard-filter-btn" onClick={() => setClientReportDropdownOpen(!clientReportDropdownOpen)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+                  </svg>
+                  {clientReportClient
+                    ? (clients.find(c => c.clientId === clientReportClient)?.name || clientReportClient)
+                    : 'Select Client'}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: clientReportDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                {clientReportDropdownOpen && (
+                  <div className="dashboard-filter-menu">
+                    <div className="dashboard-filter-search">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" placeholder="Search clients..." value={clientReportSearch} onChange={(e) => setClientReportSearch(e.target.value)} autoFocus />
+                    </div>
+                    <div className="dashboard-filter-list">
+                      {clients
+                        .filter(c => !clientReportSearch || c.name.toLowerCase().includes(clientReportSearch.toLowerCase()) || c.clientId.toLowerCase().includes(clientReportSearch.toLowerCase()))
+                        .sort((a, b) => (parseInt(a.clientId?.match(/(\d+)/)?.[1], 10) || 0) - (parseInt(b.clientId?.match(/(\d+)/)?.[1], 10) || 0))
+                        .map(c => (
+                          <div key={c.clientId} className={`dashboard-filter-item ${clientReportClient === c.clientId ? 'active' : ''}`} onClick={() => { setClientReportClient(c.clientId); setClientReportDropdownOpen(false); setClientReportSearch(''); }}>
+                            <span className="client-avatar" style={{ width: 24, height: 24, fontSize: 9 }}>{getClientInitials(c.name)}</span>
+                            <span>{c.name}</span>
+                            <span className="dashboard-filter-id">{c.clientId}</span>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+              {clientReportClient && (
+                <button className="dashboard-filter-clear" onClick={() => setClientReportClient(null)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {!clientReportClient ? (
+              <div className="report-empty" style={{ padding: '80px 20px' }}>
+                <h3 style={{ marginBottom: 8, color: 'var(--text-primary)' }}>Select a Client</h3>
+                <p>Choose a client from the dropdown above to view their detailed monthly report</p>
+              </div>
+            ) : clientReportEntries.length === 0 ? (
+              <div className="report-empty" style={{ padding: '80px 20px' }}>
+                <h3 style={{ marginBottom: 8, color: 'var(--text-primary)' }}>No Entries Found</h3>
+                <p>No billing entries found for this client in FY {financialYear.startYear}-{financialYear.endYear}</p>
+              </div>
+            ) : (
+              <>
+                {/* Client Info Banner */}
+                {(() => {
+                  const clientObj = clients.find(c => c.clientId === clientReportClient);
+                  return clientObj ? (
+                    <div className="client-report-banner">
+                      <div className="client-avatar" style={{ width: 48, height: 48, fontSize: 16 }}>{getClientInitials(clientObj.name)}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{clientObj.name}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {clientObj.clientId} &bull; {clientObj.type || 'N/A'} &bull; Commission: {clientObj.commissionRate ?? 0}% &bull; FY {financialYear.startYear}-{financialYear.endYear}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 24 }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 4 }}>Entries</div>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700 }}>{clientReportEntries.length}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 4 }}>Total Commission</div>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700, color: 'var(--accent-green)' }}>{formatCurrency(clientReportSummary?.totalCommission || 0)}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 4 }}>Total Outstanding</div>
+                          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700, color: (clientReportSummary?.totalOutstanding || 0) > 0 ? 'var(--accent-orange)' : 'var(--accent-green)' }}>{formatCurrency(clientReportSummary?.totalOutstanding || 0)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Color Legend */}
+                <div className="client-report-legend">
+                  <div className="client-report-legend-item">
+                    <span className="legend-dot" style={{ background: 'var(--accent-green)' }}></span>
+                    <span>Adds to Outstanding (Commission, Invoice, Pending)</span>
+                  </div>
+                  <div className="client-report-legend-item">
+                    <span className="legend-dot" style={{ background: 'var(--accent-red)' }}></span>
+                    <span>Reduces Outstanding (Receipts, TDS)</span>
+                  </div>
+                  <div className="client-report-legend-item">
+                    <span className="legend-dot" style={{ background: 'var(--accent-blue)' }}></span>
+                    <span>Computed / Tracking</span>
+                  </div>
+                </div>
+
+                {/* Main Data Table */}
+                <div className="report-container" style={{ marginBottom: 24 }}>
+                  <div className="report-header">
+                    <h3>Royalty Amounts</h3>
+                    <button className="btn btn-secondary btn-sm" onClick={() => {
+                      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount]); }
+                      exportSingleTableExcel('Royalty Amounts', h, rows);
+                    }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Export
+                    </button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="report-table client-report-table">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col">Month</th>
+                          <th>IPRS Amount</th>
+                          <th>PRS Amount (INR)</th>
+                          <th>Sound Exchange</th>
+                          <th>ISAMRA</th>
+                          <th>ASCAP</th>
+                          <th>PPL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientReportEntries.map((e, idx) => (
+                          <tr key={idx}>
+                            <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
+                            <td><span className="amount">{formatCurrency(e.iprsAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.prsAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.soundExchangeAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.isamraAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.ascapAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.pplAmount)}</span></td>
+                          </tr>
+                        ))}
+                        {clientReportSummary && (
+                          <tr className="summary-row">
+                            <td className="sticky-col"><strong>Total</strong></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.iprsAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.prsAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.soundExchangeAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.isamraAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.ascapAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.pplAmount)}</span></td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Commission Table */}
+                <div className="report-container" style={{ marginBottom: 24 }}>
+                  <div className="report-header">
+                    <h3>Commission Breakdown <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--accent-green)' }}>+ Adds to Outstanding</span></h3>
+                    <button className="btn btn-secondary btn-sm" onClick={() => {
+                      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'Total Commission'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.totalCommission||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.totalCommission]); }
+                      exportSingleTableExcel('Commission', h, rows);
+                    }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Export
+                    </button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="report-table client-report-table">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col">Month</th>
+                          <th>Rate</th>
+                          <th>IPRS Comm.</th>
+                          <th>PRS Comm.</th>
+                          <th>Sound Ex. Comm.</th>
+                          <th>ISAMRA Comm.</th>
+                          <th>ASCAP Comm.</th>
+                          <th>PPL Comm.</th>
+                          <th className="col-highlight-green">Total Commission</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientReportEntries.map((e, idx) => (
+                          <tr key={idx}>
+                            <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
+                            <td><span className="amount">{e.commissionRate || 0}%</span></td>
+                            <td><span className="amount">{formatCurrency(e.iprsCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.prsCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.soundExchangeCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.isamraCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.ascapCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.pplCommission)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.totalCommission)}</span></td>
+                          </tr>
+                        ))}
+                        {clientReportSummary && (
+                          <tr className="summary-row">
+                            <td className="sticky-col"><strong>Total</strong></td>
+                            <td></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.iprsCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.prsCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.soundExchangeCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.isamraCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.ascapCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.pplCommission)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.totalCommission)}</span></td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* GST & Invoice Table */}
+                <div className="report-container" style={{ marginBottom: 24 }}>
+                  <div className="report-header">
+                    <h3>GST &amp; Invoice <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--accent-green)' }}>+ Adds to Outstanding</span></h3>
+                    <button className="btn btn-secondary btn-sm" onClick={() => {
+                      const h = ['Month', 'Cur. GST Base', 'Cur. GST (18%)', 'Cur. Invoice Total', 'Prev. GST Base', 'Prev. GST (18%)', 'Prev. Invoice Total'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.currentMonthGstBase||0, e.currentMonthGst||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingGstBase||0, e.previousOutstandingGst||0, e.previousOutstandingInvoiceTotal||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.currentMonthGstBase, s.currentMonthGst, s.currentMonthInvoiceTotal, s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal]); }
+                      exportSingleTableExcel('GST & Invoice', h, rows);
+                    }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Export
+                    </button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="report-table client-report-table">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col">Month</th>
+                          <th>Cur. GST Base</th>
+                          <th>Cur. GST</th>
+                          <th className="col-highlight-green">Cur. Invoice Total</th>
+                          <th>Prev. GST Base</th>
+                          <th>Prev. GST</th>
+                          <th className="col-highlight-green">Prev. Invoice Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientReportEntries.map((e, idx) => (
+                          <tr key={idx}>
+                            <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
+                            <td><span className="amount">{formatCurrency(e.currentMonthGstBase)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.currentMonthGst)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.currentMonthInvoiceTotal)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.previousOutstandingGstBase)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.previousOutstandingGst)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.previousOutstandingInvoiceTotal)}</span></td>
+                          </tr>
+                        ))}
+                        {clientReportSummary && (
+                          <tr className="summary-row">
+                            <td className="sticky-col"><strong>Total</strong></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.currentMonthGstBase)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.currentMonthGst)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.currentMonthInvoiceTotal)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.previousOutstandingGstBase)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.previousOutstandingGst)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.previousOutstandingInvoiceTotal)}</span></td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Receipts & TDS Table */}
+                <div className="report-container" style={{ marginBottom: 24 }}>
+                  <div className="report-header">
+                    <h3>Receipts &amp; TDS <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--accent-red)' }}>- Reduces Outstanding</span></h3>
+                    <button className="btn btn-secondary btn-sm" onClick={() => {
+                      const h = ['Month', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Total Deductions'];
+                      const rows = clientReportEntries.map(e => { const td = (e.currentMonthReceipt||0)+(e.currentMonthTds||0)+(e.previousMonthReceipt||0)+(e.previousMonthTds||0); return [`${monthLabels[e.month]} ${e.year}`, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, td]; });
+                      if (clientReportSummary) { const s = clientReportSummary; const totalDed = s.currentMonthReceipt+s.currentMonthTds+s.previousMonthReceipt+s.previousMonthTds; rows.push(['TOTAL', s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, totalDed]); }
+                      exportSingleTableExcel('Receipts & TDS', h, rows);
+                    }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Export
+                    </button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="report-table client-report-table">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col">Month</th>
+                          <th className="col-highlight-red">Cur. Receipt</th>
+                          <th className="col-highlight-red">Cur. TDS</th>
+                          <th className="col-highlight-red">Prev. Receipt</th>
+                          <th className="col-highlight-red">Prev. TDS</th>
+                          <th>Total Deductions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientReportEntries.map((e, idx) => {
+                          const totalDeductions = (e.currentMonthReceipt || 0) + (e.currentMonthTds || 0) + (e.previousMonthReceipt || 0) + (e.previousMonthTds || 0);
+                          return (
+                            <tr key={idx}>
+                              <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
+                              <td className="col-highlight-red"><span className={`amount ${(e.currentMonthReceipt || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.currentMonthReceipt)}</span></td>
+                              <td className="col-highlight-red"><span className={`amount ${(e.currentMonthTds || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.currentMonthTds)}</span></td>
+                              <td className="col-highlight-red"><span className={`amount ${(e.previousMonthReceipt || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.previousMonthReceipt)}</span></td>
+                              <td className="col-highlight-red"><span className={`amount ${(e.previousMonthTds || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.previousMonthTds)}</span></td>
+                              <td><span className={`amount ${totalDeductions > 0 ? 'negative' : ''}`}>{formatCurrency(totalDeductions)}</span></td>
+                            </tr>
+                          );
+                        })}
+                        {clientReportSummary && (
+                          <tr className="summary-row">
+                            <td className="sticky-col"><strong>Total</strong></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.currentMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.currentMonthTds)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.previousMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.previousMonthTds)}</span></td>
+                            <td><span className="amount negative">{formatCurrency(clientReportSummary.currentMonthReceipt + clientReportSummary.currentMonthTds + clientReportSummary.previousMonthReceipt + clientReportSummary.previousMonthTds)}</span></td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Outstanding Tracking Table */}
+                <div className="report-container" style={{ marginBottom: 24 }}>
+                  <div className="report-header">
+                    <h3>Outstanding Tracking</h3>
+                    <button className="btn btn-secondary btn-sm" onClick={() => {
+                      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Total Outstanding'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.totalOutstanding||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, s.totalOutstanding]); }
+                      exportSingleTableExcel('Outstanding', h, rows);
+                    }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Export
+                    </button>
+                  </div>
+                  <div className="table-wrapper">
+                    <table className="report-table client-report-table">
+                      <thead>
+                        <tr>
+                          <th className="sticky-col">Month</th>
+                          <th>Prev. O/S (Carry-Forward)</th>
+                          <th className="col-highlight-green">Total Commission</th>
+                          <th className="col-highlight-green">Cur. Invoice Total</th>
+                          <th className="col-highlight-green">Prev. Invoice Total</th>
+                          <th className="col-highlight-red">Cur. Receipt</th>
+                          <th className="col-highlight-red">Cur. TDS</th>
+                          <th className="col-highlight-red">Prev. Receipt</th>
+                          <th className="col-highlight-red">Prev. TDS</th>
+                          <th className="col-highlight-green">Invoice Pending (Cur.)</th>
+                          <th className="col-highlight-green">Prev. Invoice Pending</th>
+                          <th>Monthly O/S</th>
+                          <th style={{ background: 'rgba(240, 160, 64, 0.15)' }}>Total Outstanding</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientReportEntries.map((e, idx) => (
+                          <tr key={idx}>
+                            <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
+                            <td><span className="amount highlight">{formatCurrency(e.previousMonthOutstanding)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.totalCommission)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.currentMonthInvoiceTotal)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.previousOutstandingInvoiceTotal)}</span></td>
+                            <td className="col-highlight-red"><span className={`amount ${(e.currentMonthReceipt || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.currentMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className={`amount ${(e.currentMonthTds || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.currentMonthTds)}</span></td>
+                            <td className="col-highlight-red"><span className={`amount ${(e.previousMonthReceipt || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.previousMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className={`amount ${(e.previousMonthTds || 0) > 0 ? 'negative' : ''}`}>{formatCurrency(e.previousMonthTds)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.invoicePendingCurrentMonth)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.previousInvoicePending)}</span></td>
+                            <td><span className={`amount ${(e.monthlyOutstanding || 0) > 0 ? 'positive' : (e.monthlyOutstanding || 0) < 0 ? 'negative' : ''}`}>{formatCurrency(e.monthlyOutstanding)}</span></td>
+                            <td style={{ background: 'rgba(240, 160, 64, 0.08)' }}><span className="amount" style={{ color: 'var(--accent-orange)', fontWeight: 700 }}>{formatCurrency(e.totalOutstanding)}</span></td>
+                          </tr>
+                        ))}
+                        {clientReportSummary && (
+                          <tr className="summary-row">
+                            <td className="sticky-col"><strong>Total</strong></td>
+                            <td><span className="amount highlight">{formatCurrency(clientReportSummary.previousMonthOutstanding)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.totalCommission)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.currentMonthInvoiceTotal)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.previousOutstandingInvoiceTotal)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.currentMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.currentMonthTds)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.previousMonthReceipt)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportSummary.previousMonthTds)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.invoicePendingCurrentMonth)}</span></td>
+                            <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.previousInvoicePending)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.monthlyOutstanding)}</span></td>
+                            <td style={{ background: 'rgba(240, 160, 64, 0.15)' }}><span className="amount" style={{ color: 'var(--accent-orange)', fontWeight: 700 }}>{formatCurrency(clientReportSummary.totalOutstanding)}</span></td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Final Summary Card */}
+                <div className="client-report-summary-card">
+                  <div className="summary-header">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="1" x2="12" y2="23"></line>
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                    <h3>Final Summary</h3>
+                  </div>
+                  {clientReportSummary && (() => {
+                    const s = clientReportSummary;
+                    const totalReceipts = s.currentMonthReceipt + s.previousMonthReceipt;
+                    const totalTds = s.currentMonthTds + s.previousMonthTds;
+                    const totalInvoiced = s.currentMonthInvoiceTotal + s.previousOutstandingInvoiceTotal;
+                    return (
+                      <div className="client-report-summary-grid">
+                        <div className="client-report-summary-item">
+                          <div className="label">Opening Balance</div>
+                          <div className="value" style={{ color: 'var(--accent-blue)' }}>{formatCurrency(s.previousMonthOutstanding)}</div>
+                        </div>
+                        <div className="client-report-summary-item add">
+                          <div className="label">+ Total Commission</div>
+                          <div className="value">{formatCurrency(s.totalCommission)}</div>
+                        </div>
+                        <div className="client-report-summary-item add">
+                          <div className="label">+ Total Invoiced (GST)</div>
+                          <div className="value">{formatCurrency(totalInvoiced)}</div>
+                        </div>
+                        <div className="client-report-summary-item subtract">
+                          <div className="label">− Total Receipts</div>
+                          <div className="value">{formatCurrency(totalReceipts)}</div>
+                        </div>
+                        <div className="client-report-summary-item subtract">
+                          <div className="label">− Total TDS</div>
+                          <div className="value">{formatCurrency(totalTds)}</div>
+                        </div>
+                        <div className="client-report-summary-item final">
+                          <div className="label">= Final Outstanding</div>
+                          <div className="value">{formatCurrency(s.totalOutstanding)}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
           </div>
         )}
 
