@@ -10,9 +10,11 @@ const initialFormState = {
 
   // Royalty Amounts
   iprsAmount: '',
+  iprsEntries: [],
   prsGbp: '',
   gbpToInrRate: '',
   prsAmount: '',
+  prsEntries: [],
   soundExchangeAmount: '',
   isamraAmount: '',
   ascapAmount: '',
@@ -46,9 +48,11 @@ export function useBillingForm() {
         gstRate: currentEntry.gstRate ?? '18',
         royaltyType: currentEntry.royaltyType || 'IPRS + PRS',
         iprsAmount: currentEntry.iprsAmount || '',
+        iprsEntries: currentEntry.iprsEntries || [],
         prsGbp: currentEntry.prsGbp || '',
         gbpToInrRate: currentEntry.gbpToInrRate || '',
         prsAmount: currentEntry.prsAmount || '',
+        prsEntries: currentEntry.prsEntries || [],
         soundExchangeAmount: currentEntry.soundExchangeAmount || '',
         isamraAmount: currentEntry.isamraAmount || '',
         ascapAmount: currentEntry.ascapAmount || '',
@@ -94,6 +98,27 @@ export function useBillingForm() {
   const enableEdit = useCallback(() => {
     setIsReadOnly(false);
   }, []);
+
+  // Update IPRS entries from modal
+  const updateIprsEntries = useCallback((entries, totalAmount) => {
+    setFormData(prev => ({
+      ...prev,
+      iprsEntries: entries,
+      iprsAmount: totalAmount,
+    }));
+    setIsDirty(true);
+  }, []);
+
+  // Update PRS entries from modal
+  const updatePrsEntries = useCallback((entries, totalAmount) => {
+    setFormData(prev => ({
+      ...prev,
+      prsEntries: entries,
+      prsAmount: totalAmount,
+    }));
+    setIsDirty(true);
+  }, []);
+
 
   // Round to 2 decimal places (matches backend)
   const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
@@ -232,9 +257,11 @@ export function useBillingForm() {
     gstRate: parseFloat(formData.gstRate) || 18,
     royaltyType: formData.royaltyType,
     iprsAmount: parseFloat(formData.iprsAmount) || 0,
+    iprsEntries: formData.iprsEntries || [],
     prsGbp: parseFloat(formData.prsGbp) || 0,
     gbpToInrRate: parseFloat(formData.gbpToInrRate) || 0,
     prsAmount: parseFloat(formData.prsAmount) || 0,
+    prsEntries: formData.prsEntries || [],
     soundExchangeAmount: parseFloat(formData.soundExchangeAmount) || 0,
     isamraAmount: parseFloat(formData.isamraAmount) || 0,
     ascapAmount: parseFloat(formData.ascapAmount) || 0,
@@ -305,6 +332,8 @@ export function useBillingForm() {
     status: currentEntry?.status || null,
     isReadOnly,
     enableEdit,
+    updateIprsEntries,
+    updatePrsEntries,
   };
 }
 

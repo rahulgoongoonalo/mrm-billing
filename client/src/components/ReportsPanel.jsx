@@ -481,6 +481,143 @@ function ReportsPanel({ onClose }) {
     XLSX.writeFile(wb, `MRM_Detailed_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
   };
 
+  // ── IPRS Detail PDF Export ──
+  const exportIprsPDF = () => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const commRate = clientObj?.commissionRate || 0;
+    const fmtNum = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // Title
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40);
+    doc.text(`IPRS Royalty Details — ${clientName}`, 14, 18);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+    doc.text(`${clientReportClient} | ${fyLabel} | Commission Rate: ${commRate}%`, 14, 25);
+
+    // Collect all IPRS entries across all months
+    const allRows = [];
+    let grandReceived = 0, grandTds = 0, grandAfterTds = 0, grandCommission = 0;
+
+    clientReportEntries.forEach(entry => {
+      const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
+      if (entry.iprsEntries && entry.iprsEntries.length > 0) {
+        entry.iprsEntries.forEach(row => {
+          const received = row.receivedAmount || 0;
+          const tds = row.tdsDeduction || 0;
+          const afterTds = row.afterTdsAmount || (received - tds);
+          const commission = row.commission || 0;
+          allRows.push([monthLabel, row.date || '—', fmtNum(received), fmtNum(tds), fmtNum(afterTds), fmtNum(commission)]);
+          grandReceived += received; grandTds += tds; grandAfterTds += afterTds; grandCommission += commission;
+        });
+      } else if ((entry.iprsAmount || 0) > 0) {
+        // Legacy entry without detailed rows
+        const amt = entry.iprsAmount || 0;
+        const comm = entry.iprsCommission || 0;
+        allRows.push([monthLabel, '—', fmtNum(amt), '—', '—', fmtNum(comm)]);
+        grandReceived += amt; grandCommission += comm;
+      }
+    });
+
+    if (allRows.length === 0) {
+      allRows.push(['No IPRS data', '', '', '', '', '']);
+    }
+
+    allRows.push(['TOTAL', '', fmtNum(grandReceived), fmtNum(grandTds), fmtNum(grandAfterTds), fmtNum(grandCommission)]);
+
+    autoTable(doc, {
+      startY: 32,
+      head: [['Month', 'Date of Royalty Received', 'Received Royalty Amount', 'TDS Deduction', 'After TDS Received Royalty', 'Commission']],
+      body: allRows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2.5, halign: 'right' },
+      headStyles: { fillColor: [55, 65, 81], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold' }, 1: { halign: 'center' } },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+      didParseCell: (data) => {
+        if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [229, 231, 235];
+        }
+      },
+    });
+
+    doc.save(`IPRS_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
+  };
+
+  // ── PRS Detail PDF Export ──
+  const exportPrsPDF = () => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const commRate = clientObj?.commissionRate || 0;
+    const fmtNum = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+    const fmtGbp = (v) => new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40);
+    doc.text(`PRS Royalty Details — ${clientName}`, 14, 18);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+    doc.text(`${clientReportClient} | ${fyLabel} | Commission Rate: ${commRate}%`, 14, 25);
+
+    const allRows = [];
+    let grandGbp = 0, grandInr = 0, grandCommission = 0;
+
+    clientReportEntries.forEach(entry => {
+      const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
+      if (entry.prsEntries && entry.prsEntries.length > 0) {
+        entry.prsEntries.forEach(row => {
+          const gbp = row.receivedGbp || 0;
+          const rate = row.gbpToInrRate || 0;
+          const inr = row.receivedInr || 0;
+          const commission = row.commission || 0;
+          allRows.push([monthLabel, row.date || '—', fmtGbp(gbp), fmtNum(rate), fmtNum(inr), fmtNum(commission)]);
+          grandGbp += gbp; grandInr += inr; grandCommission += commission;
+        });
+      } else if ((entry.prsAmount || 0) > 0) {
+        // Legacy entry — use prsGbp, gbpToInrRate, prsAmount
+        const gbp = entry.prsGbp || 0;
+        const rate = entry.gbpToInrRate || 0;
+        const inr = entry.prsAmount || 0;
+        const comm = entry.prsCommission || 0;
+        allRows.push([monthLabel, '—', fmtGbp(gbp), rate ? fmtNum(rate) : '—', fmtNum(inr), fmtNum(comm)]);
+        grandGbp += gbp; grandInr += inr; grandCommission += comm;
+      }
+    });
+
+    if (allRows.length === 0) {
+      allRows.push(['No PRS data', '', '', '', '', '']);
+    }
+
+    allRows.push(['TOTAL', '', fmtGbp(grandGbp), '', fmtNum(grandInr), fmtNum(grandCommission)]);
+
+    autoTable(doc, {
+      startY: 32,
+      head: [['Month', 'Date of Royalty Received', 'Received Royalty (GBP)', 'GBP to INR Rate', 'Received Royalty (INR)', 'Commission']],
+      body: allRows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2.5, halign: 'right' },
+      headStyles: { fillColor: [55, 65, 81], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold' }, 1: { halign: 'center' } },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+      didParseCell: (data) => {
+        if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [229, 231, 235];
+        }
+      },
+    });
+
+    doc.save(`PRS_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
+  };
+
   const exportSelectedSectionsPDF = () => {
     if (!clientReportClient || clientReportEntries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
@@ -1367,6 +1504,24 @@ function ReportsPanel({ onClose }) {
                       <line x1="16" y1="17" x2="8" y2="17"></line>
                     </svg>
                     Export PDF
+                  </button>
+                  <button className="btn btn-info" onClick={exportIprsPDF} style={{ background: '#3b82f6' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="11" x2="12" y2="17"></line>
+                      <polyline points="9 14 12 11 15 14"></polyline>
+                    </svg>
+                    IPRS PDF
+                  </button>
+                  <button className="btn btn-info" onClick={exportPrsPDF} style={{ background: '#8b5cf6' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="11" x2="12" y2="17"></line>
+                      <polyline points="9 14 12 11 15 14"></polyline>
+                    </svg>
+                    PRS PDF
                   </button>
                 </div>
               )}

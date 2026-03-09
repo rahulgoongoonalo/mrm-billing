@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useBillingForm } from '../hooks/useBillingForm';
+import RoyaltyDetailModal from './RoyaltyDetailModal';
+import PRSDetailModal from './PRSDetailModal';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -29,7 +31,12 @@ function BillingForm() {
     status,
     isReadOnly,
     enableEdit,
+    updateIprsEntries,
+    updatePrsEntries,
   } = useBillingForm();
+
+  const [iprsModalOpen, setIprsModalOpen] = useState(false);
+  const [prsModalOpen, setPrsModalOpen] = useState(false);
 
   const { financialYear } = settings;
   const year = ['jan', 'feb', 'mar'].includes(currentMonth)
@@ -174,30 +181,52 @@ function BillingForm() {
             </div>
           </div>
           <div className="input-grid">
-            <div className="input-group">
-              <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="iprsAmount" value={formData.iprsAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+            {formData.iprsEntries?.length > 0 ? (
+              <div className="input-group royalty-clickable" onClick={() => setIprsModalOpen(true)}>
+                <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span>
+                  <span className="click-hint">Click to view details</span>
+                </label>
+                <div className="input-prefix"><span>&#8377;</span>
+                  <input type="number" name="iprsAmount" value={formData.iprsAmount} readOnly placeholder="0.00" style={{ cursor: 'pointer' }} />
+                </div>
+                <span className="entries-badge">{formData.iprsEntries.length} {formData.iprsEntries.length === 1 ? 'entry' : 'entries'}</span>
               </div>
-            </div>
-            <div className="input-group">
-              <label>PRS (GBP)</label>
-              <div className="input-prefix"><span>&pound;</span>
-                <input type="number" name="prsGbp" value={formData.prsGbp} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
+            ) : (
+              <div className="input-group" style={{ position: 'relative' }}>
+                <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span></label>
+                <div className="input-prefix"><span>&#8377;</span>
+                  <input type="number" name="iprsAmount" value={formData.iprsAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+                </div>
+                {!isReadOnly && (
+                  <button type="button" className="detail-open-btn" onClick={() => setIprsModalOpen(true)} title="Add detailed entries">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  </button>
+                )}
               </div>
-            </div>
-            <div className="input-group">
-              <label>GBP to INR Rate</label>
-              <div className="input-prefix"><span>&pound;&rarr;&#8377;</span>
-                <input type="number" name="gbpToInrRate" value={formData.gbpToInrRate} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
+            )}
+            {formData.prsEntries?.length > 0 ? (
+              <div className="input-group royalty-clickable" onClick={() => setPrsModalOpen(true)}>
+                <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span>
+                  <span className="click-hint">Click to view details</span>
+                </label>
+                <div className="input-prefix"><span>&#8377;</span>
+                  <input type="number" name="prsAmount" value={formData.prsAmount} readOnly placeholder="0.00" style={{ cursor: 'pointer' }} />
+                </div>
+                <span className="entries-badge">{formData.prsEntries.length} {formData.prsEntries.length === 1 ? 'entry' : 'entries'}</span>
               </div>
-            </div>
-            <div className="input-group">
-              <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="prsAmount" value={formData.prsAmount} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
+            ) : (
+              <div className="input-group" style={{ position: 'relative' }}>
+                <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span></label>
+                <div className="input-prefix"><span>&#8377;</span>
+                  <input type="number" name="prsAmount" value={formData.prsAmount} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
+                </div>
+                {!isReadOnly && (
+                  <button type="button" className="detail-open-btn" onClick={() => setPrsModalOpen(true)} title="Add detailed entries">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  </button>
+                )}
               </div>
-            </div>
+            )}
             <div className="input-group">
               <label>Sound Exchange Amount <span style={{color:'#ef4444'}}>*</span></label>
               <div className="input-prefix"><span>&#8377;</span>
@@ -485,6 +514,41 @@ function BillingForm() {
           </span>
         )}
       </div>
+
+      {/* IPRS Detail Modal */}
+      {iprsModalOpen && (
+        <RoyaltyDetailModal
+          title="IPRS"
+          entries={formData.iprsEntries || []}
+          commissionRate={formData.commissionRate}
+          isFormReadOnly={isReadOnly}
+          fallbackAmount={formData.iprsAmount}
+          onSave={(entries, totalAmount, totalCommission) => {
+            updateIprsEntries(entries, totalAmount);
+            setIprsModalOpen(false);
+          }}
+          onClose={() => setIprsModalOpen(false)}
+        />
+      )}
+
+      {/* PRS Detail Modal */}
+      {prsModalOpen && (
+        <PRSDetailModal
+          title="PRS"
+          entries={formData.prsEntries || []}
+          commissionRate={formData.commissionRate}
+          isFormReadOnly={isReadOnly}
+          fallbackGbp={formData.prsGbp}
+          fallbackRate={formData.gbpToInrRate}
+          fallbackAmount={formData.prsAmount}
+          onSave={(entries, totalAmount, totalCommission) => {
+            updatePrsEntries(entries, totalAmount);
+            setPrsModalOpen(false);
+          }}
+          onClose={() => setPrsModalOpen(false)}
+        />
+      )}
+
     </main>
   );
 }

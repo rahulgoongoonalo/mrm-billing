@@ -298,6 +298,111 @@ body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg-p
 @media (max-width: 768px) { .reports-sidebar { position: fixed; left: -280px; transition: left 0.3s ease; z-index: 100; } .reports-sidebar.open { left: 0; } .reports-main { padding: 20px; } }
 
 /* Auth Modal Styles */
+
+/* Royalty Detail Modal Styles */
+.royalty-detail-modal { max-width: 900px; }
+.royalty-detail-modal .modal-body { padding: 16px 24px; }
+
+.royalty-detail-info {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; background: var(--bg-secondary); border-radius: 10px;
+  margin-bottom: 16px; font-size: 13px; color: var(--text-secondary);
+}
+.royalty-detail-info strong { color: var(--accent-blue); }
+
+.royalty-detail-table-wrapper { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border-color); }
+
+.royalty-detail-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.royalty-detail-table thead { background: var(--bg-secondary); }
+.royalty-detail-table th {
+  padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);
+  white-space: nowrap; border-bottom: 1px solid var(--border-color);
+}
+.royalty-detail-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border-color); vertical-align: middle;
+}
+.royalty-detail-table tbody tr:hover { background: var(--bg-input); }
+.royalty-detail-table .row-num { color: var(--text-muted); font-size: 12px; text-align: center; }
+
+.detail-input {
+  width: 100%; padding: 8px 10px; background: var(--input-field);
+  border: 1px solid var(--border-color); border-radius: 6px;
+  color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  transition: border-color 0.2s;
+}
+.detail-input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(0, 176, 240, 0.1); }
+.detail-input::placeholder { color: var(--text-muted); }
+
+.detail-input-prefix { position: relative; }
+.detail-input-prefix input { padding-left: 28px; }
+.detail-input-prefix span {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 13px;
+}
+
+.detail-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-primary); }
+.detail-value.amount { color: var(--text-primary); }
+.detail-value.computed, .royalty-detail-table .computed { color: var(--accent-blue); font-weight: 500; }
+
+.total-row { background: var(--bg-secondary) !important; }
+.total-row td { border-top: 2px solid var(--accent-blue); padding: 12px 10px; }
+.total-row strong { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+
+.detail-remove-btn {
+  background: none; border: none; color: var(--accent-red); cursor: pointer;
+  padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+.detail-remove-btn:hover { background: rgba(240, 64, 64, 0.15); }
+
+.detail-add-btn {
+  display: flex; align-items: center; gap: 6px; margin-top: 12px; padding: 8px 16px;
+  background: var(--bg-input); border: 1px dashed var(--border-accent);
+  border-radius: 8px; color: var(--accent-blue); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.detail-add-btn:hover { background: rgba(0, 176, 240, 0.08); border-color: var(--accent-blue); }
+
+/* Clickable Royalty Input Fields */
+.royalty-clickable {
+  cursor: pointer; position: relative; border-radius: 10px;
+  transition: all 0.2s ease; padding: 4px;
+}
+.royalty-clickable:hover {
+  background: rgba(0, 176, 240, 0.05);
+  box-shadow: 0 0 0 1px rgba(0, 176, 240, 0.3);
+}
+.royalty-clickable input { cursor: pointer !important; }
+
+.click-hint {
+  font-size: 10px; font-weight: 400; color: var(--accent-blue);
+  text-transform: none; letter-spacing: 0; margin-left: 8px;
+  opacity: 0.7;
+}
+.royalty-clickable:hover .click-hint { opacity: 1; }
+
+.entries-badge {
+  position: absolute; top: 2px; right: 0;
+  font-size: 9px; font-weight: 600; color: var(--accent-green);
+  background: rgba(146, 208, 80, 0.15); padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.detail-open-btn {
+  position: absolute; top: 0; right: 0;
+  width: 24px; height: 24px;
+  background: rgba(0, 176, 240, 0.15); border: 1px solid rgba(0, 176, 240, 0.3);
+  border-radius: 6px; color: var(--accent-blue);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s;
+}
+.detail-open-btn:hover {
+  background: rgba(0, 176, 240, 0.25); border-color: var(--accent-blue);
+}
+
 .auth-modal-overlay {
   position: fixed;
   top: 0;

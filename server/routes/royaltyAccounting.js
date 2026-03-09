@@ -174,7 +174,10 @@ router.post('/', async (req, res) => {
       commissionRate: data.commissionRate ?? 0,
       gstRate: data.gstRate ?? 18,
       iprsAmount: data.iprsAmount || 0,
+      iprsEntries: data.iprsEntries || [],
       prsAmount: data.prsAmount || 0,
+      prsEntries: data.prsEntries || [],
+
       soundExchangeAmount: data.soundExchangeAmount || 0,
       isamraAmount: data.isamraAmount || 0,
       ascapAmount: data.ascapAmount || 0,

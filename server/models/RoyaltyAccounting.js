@@ -18,9 +18,23 @@ const royaltyAccountingSchema = new mongoose.Schema({
 
   // Royalty Amount Inputs (UI Editable)
   iprsAmount: { type: Number, default: 0 },
+  iprsEntries: [{
+    date: { type: String, default: '' },
+    receivedAmount: { type: Number, default: 0 },
+    tdsDeduction: { type: Number, default: 0 },
+    afterTdsAmount: { type: Number, default: 0 },
+    commission: { type: Number, default: 0 },
+  }],
   prsGbp: { type: Number, default: 0 },
   gbpToInrRate: { type: Number, default: 0 },
   prsAmount: { type: Number, default: 0 },
+  prsEntries: [{
+    date: { type: String, default: '' },
+    receivedGbp: { type: Number, default: 0 },
+    gbpToInrRate: { type: Number, default: 0 },
+    receivedInr: { type: Number, default: 0 },
+    commission: { type: Number, default: 0 },
+  }],
   soundExchangeAmount: { type: Number, default: 0 },
   isamraAmount: { type: Number, default: 0 },
   ascapAmount: { type: Number, default: 0 },
