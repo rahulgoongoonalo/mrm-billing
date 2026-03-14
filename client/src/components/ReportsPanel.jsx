@@ -670,7 +670,6 @@ function ReportsPanel({ onClose }) {
     if (type === 'PRS') {
       if (format === 'pdf') { exportPrsPDF(); return; }
       // Excel export for PRS
-      const fmtGbp = (v) => v || 0;
       const headers = ['Month', 'Date of Royalty Received', 'Received Royalty (GBP)', 'GBP to INR Rate', 'Received Royalty (INR)', 'Commission'];
       const rows = [];
       let grandGbp = 0, grandInr = 0, grandCommission = 0;
