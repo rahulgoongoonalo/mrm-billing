@@ -39,6 +39,7 @@ const royaltyAccountingSchema = new mongoose.Schema({
   isamraAmount: { type: Number, default: 0 },
   ascapAmount: { type: Number, default: 0 },
   pplAmount: { type: Number, default: 0 },
+  mlcAmount: { type: Number, default: 0 },
 
   // Computed Commission Values
   iprsCommission: { type: Number, default: 0 },
@@ -47,6 +48,7 @@ const royaltyAccountingSchema = new mongoose.Schema({
   isamraCommission: { type: Number, default: 0 },
   ascapCommission: { type: Number, default: 0 },
   pplCommission: { type: Number, default: 0 },
+  mlcCommission: { type: Number, default: 0 },
   totalCommission: { type: Number, default: 0 },
 
   // GST & Invoice Inputs (UI Editable)
@@ -106,6 +108,7 @@ function computeFields(doc) {
   doc.isamraCommission = r((doc.isamraAmount || 0) * rate);
   doc.ascapCommission = r((doc.ascapAmount || 0) * rate);
   doc.pplCommission = r((doc.pplAmount || 0) * rate);
+  doc.mlcCommission = r((doc.mlcAmount || 0) * rate);
 
   doc.totalCommission = r(
     doc.iprsCommission +
@@ -113,7 +116,8 @@ function computeFields(doc) {
     doc.soundExchangeCommission +
     doc.isamraCommission +
     doc.ascapCommission +
-    doc.pplCommission
+    doc.pplCommission +
+    doc.mlcCommission
   );
 
   // 2. GST Calculation

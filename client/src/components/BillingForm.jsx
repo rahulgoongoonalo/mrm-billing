@@ -251,6 +251,12 @@ function BillingForm() {
                 <input type="number" name="pplAmount" value={formData.pplAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
             </div>
+            <div className="input-group">
+              <label>MLC Amount <span style={{color:'#ef4444'}}>*</span></label>
+              <div className="input-prefix"><span>&#8377;</span>
+                <input type="number" name="mlcAmount" value={formData.mlcAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -302,6 +308,12 @@ function BillingForm() {
               <label>PPL Commission</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.pplCommission.toFixed(2)} readOnly />
+              </div>
+            </div>
+            <div className="input-group calculated">
+              <label>MLC Commission</label>
+              <div className="input-prefix"><span>&#8377;</span>
+                <input type="number" value={calculations.mlcCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated" style={{ gridColumn: 'span 2' }}>

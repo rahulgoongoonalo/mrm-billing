@@ -147,6 +147,10 @@ function ReportsPanel({ onClose }) {
   const [clientReportDropdownOpen, setClientReportDropdownOpen] = useState(false);
   const clientReportDropdownRef = useRef(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showRoyaltyBreakdown, setShowRoyaltyBreakdown] = useState(false);
+  const [royaltyBreakdownType, setRoyaltyBreakdownType] = useState('IPRS');
+  const [royaltyBreakdownFormat, setRoyaltyBreakdownFormat] = useState('pdf');
+  const royaltyBreakdownRef = useRef(null);
   const [selectedExportSections, setSelectedExportSections] = useState({
     royalty: true,
     commission: true,
@@ -164,6 +168,9 @@ function ReportsPanel({ onClose }) {
       }
       if (clientReportDropdownRef.current && !clientReportDropdownRef.current.contains(e.target)) {
         setClientReportDropdownOpen(false);
+      }
+      if (royaltyBreakdownRef.current && !royaltyBreakdownRef.current.contains(e.target)) {
+        setShowRoyaltyBreakdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -250,8 +257,9 @@ function ReportsPanel({ onClose }) {
     const totalIsamra = src.reduce((sum, e) => sum + (e.isamraAmount || 0), 0);
     const totalSoundEx = src.reduce((sum, e) => sum + (e.soundExchangeAmount || 0), 0);
     const totalPpl = src.reduce((sum, e) => sum + (e.pplAmount || 0), 0);
+    const totalMlc = src.reduce((sum, e) => sum + (e.mlcAmount || 0), 0);
 
-    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl };
+    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl, totalMlc };
   }, [clients, entries, dashboardClient]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
@@ -280,12 +288,14 @@ function ReportsPanel({ onClose }) {
       isamraAmount: sum(x => x.isamraAmount),
       ascapAmount: sum(x => x.ascapAmount),
       pplAmount: sum(x => x.pplAmount),
+      mlcAmount: sum(x => x.mlcAmount),
       iprsCommission: sum(x => x.iprsCommission),
       prsCommission: sum(x => x.prsCommission),
       soundExchangeCommission: sum(x => x.soundExchangeCommission),
       isamraCommission: sum(x => x.isamraCommission),
       ascapCommission: sum(x => x.ascapCommission),
       pplCommission: sum(x => x.pplCommission),
+      mlcCommission: sum(x => x.mlcCommission),
       totalCommission: sum(x => x.totalCommission),
       currentMonthGstBase: sum(x => x.currentMonthGstBase),
       currentMonthGst: sum(x => x.currentMonthGst),
@@ -312,8 +322,8 @@ function ReportsPanel({ onClose }) {
     const safeName = clientName.replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 31);
 
     const headers = [
-      'Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL',
-      'Commission Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.',
+      'Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC',
+      'Commission Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.',
       'Total Commission',
       'Cur. GST Base', 'Cur. GST', 'Cur. Invoice Total',
       'Prev. GST Base', 'Prev. GST', 'Prev. Invoice Total',
@@ -324,9 +334,9 @@ function ReportsPanel({ onClose }) {
 
     const dataRows = clientReportEntries.map(e => [
       `${monthLabels[e.month]} ${e.year}`,
-      e.iprsAmount || 0, e.prsAmount || 0, e.soundExchangeAmount || 0, e.isamraAmount || 0, e.ascapAmount || 0, e.pplAmount || 0,
+      e.iprsAmount || 0, e.prsAmount || 0, e.soundExchangeAmount || 0, e.isamraAmount || 0, e.ascapAmount || 0, e.pplAmount || 0, e.mlcAmount || 0,
       `${e.commissionRate || 0}%`,
-      e.iprsCommission || 0, e.prsCommission || 0, e.soundExchangeCommission || 0, e.isamraCommission || 0, e.ascapCommission || 0, e.pplCommission || 0,
+      e.iprsCommission || 0, e.prsCommission || 0, e.soundExchangeCommission || 0, e.isamraCommission || 0, e.ascapCommission || 0, e.pplCommission || 0, e.mlcCommission || 0,
       e.totalCommission || 0,
       e.currentMonthGstBase || 0, e.currentMonthGst || 0, e.currentMonthInvoiceTotal || 0,
       e.previousOutstandingGstBase || 0, e.previousOutstandingGst || 0, e.previousOutstandingInvoiceTotal || 0,
@@ -340,9 +350,9 @@ function ReportsPanel({ onClose }) {
       const s = clientReportSummary;
       dataRows.push([
         'TOTAL',
-        s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount,
+        s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount,
         '',
-        s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission,
+        s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission,
         s.totalCommission,
         s.currentMonthGstBase, s.currentMonthGst, s.currentMonthInvoiceTotal,
         s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal,
@@ -398,17 +408,17 @@ function ReportsPanel({ onClose }) {
 
     // 1. Royalty Amounts
     {
-      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
-      const rows = ee.map(e => [m(e), e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0]);
-      if (s) rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount]);
+      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
+      const rows = ee.map(e => [m(e), e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0, e.mlcAmount||0]);
+      if (s) rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Royalty Amounts');
     }
 
     // 2. Commission Breakdown
     {
-      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'Total Commission'];
-      const rows = ee.map(e => [m(e), `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.totalCommission||0]);
-      if (s) rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.totalCommission]);
+      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.', 'Total Commission'];
+      const rows = ee.map(e => [m(e), `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.mlcCommission||0, e.totalCommission||0]);
+      if (s) rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission, s.totalCommission]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Commission');
     }
 
@@ -471,7 +481,8 @@ function ReportsPanel({ onClose }) {
         ['ISAMRA', s?.isamraAmount||0, s?.isamraCommission||0],
         ['ASCAP', s?.ascapAmount||0, s?.ascapCommission||0],
         ['PPL', s?.pplAmount||0, s?.pplCommission||0],
-        ['Total', (s?.iprsAmount||0)+(s?.prsAmount||0)+(s?.soundExchangeAmount||0)+(s?.isamraAmount||0)+(s?.ascapAmount||0)+(s?.pplAmount||0), s?.totalCommission||0],
+        ['MLC', s?.mlcAmount||0, s?.mlcCommission||0],
+        ['Total', (s?.iprsAmount||0)+(s?.prsAmount||0)+(s?.soundExchangeAmount||0)+(s?.isamraAmount||0)+(s?.ascapAmount||0)+(s?.pplAmount||0)+(s?.mlcAmount||0), s?.totalCommission||0],
       ];
       const ws = XLSX.utils.aoa_to_sheet(summaryData);
       ws['!cols'] = [{ wch: 36 }, { wch: 20 }, { wch: 20 }];
@@ -618,6 +629,130 @@ function ReportsPanel({ onClose }) {
     doc.save(`PRS_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
   };
 
+  // ── Generic Royalty Breakdown Export (PDF / Excel) ──
+  const exportRoyaltyBreakdown = (type, format) => {
+    if (!clientReportClient || clientReportEntries.length === 0) return;
+    const clientObj = clients.find(c => c.clientId === clientReportClient);
+    const clientName = clientObj?.name || clientReportClient;
+    const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
+    const commRate = clientObj?.commissionRate || 0;
+    const fmtNum = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+
+    // Special handling for IPRS and PRS (they have detailed entries)
+    if (type === 'IPRS') {
+      if (format === 'pdf') { exportIprsPDF(); return; }
+      // Excel export for IPRS
+      const headers = ['Month', 'Date of Royalty Received', 'Received Royalty Amount', 'TDS Deduction', 'After TDS Received Royalty', 'Commission'];
+      const rows = [];
+      let grandReceived = 0, grandTds = 0, grandAfterTds = 0, grandCommission = 0;
+      clientReportEntries.forEach(entry => {
+        const ml = `${monthLabels[entry.month]} ${entry.year}`;
+        if (entry.iprsEntries && entry.iprsEntries.length > 0) {
+          entry.iprsEntries.forEach(row => {
+            const received = row.receivedAmount || 0, tds = row.tdsDeduction || 0;
+            const afterTds = row.afterTdsAmount || (received - tds), commission = row.commission || 0;
+            rows.push([ml, row.date || '—', received, tds, afterTds, commission]);
+            grandReceived += received; grandTds += tds; grandAfterTds += afterTds; grandCommission += commission;
+          });
+        } else if ((entry.iprsAmount || 0) > 0) {
+          rows.push([ml, '—', entry.iprsAmount || 0, 0, 0, entry.iprsCommission || 0]);
+          grandReceived += entry.iprsAmount || 0; grandCommission += entry.iprsCommission || 0;
+        }
+      });
+      rows.push(['TOTAL', '', grandReceived, grandTds, grandAfterTds, grandCommission]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'IPRS Details');
+      XLSX.writeFile(wb, `IPRS_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+      return;
+    }
+
+    if (type === 'PRS') {
+      if (format === 'pdf') { exportPrsPDF(); return; }
+      // Excel export for PRS
+      const fmtGbp = (v) => v || 0;
+      const headers = ['Month', 'Date of Royalty Received', 'Received Royalty (GBP)', 'GBP to INR Rate', 'Received Royalty (INR)', 'Commission'];
+      const rows = [];
+      let grandGbp = 0, grandInr = 0, grandCommission = 0;
+      clientReportEntries.forEach(entry => {
+        const ml = `${monthLabels[entry.month]} ${entry.year}`;
+        if (entry.prsEntries && entry.prsEntries.length > 0) {
+          entry.prsEntries.forEach(row => {
+            const gbp = row.receivedGbp || 0, rate = row.gbpToInrRate || 0, inr = row.receivedInr || 0, commission = row.commission || 0;
+            rows.push([ml, row.date || '—', gbp, rate, inr, commission]);
+            grandGbp += gbp; grandInr += inr; grandCommission += commission;
+          });
+        } else if ((entry.prsAmount || 0) > 0) {
+          rows.push([ml, '—', entry.prsGbp || 0, entry.gbpToInrRate || 0, entry.prsAmount || 0, entry.prsCommission || 0]);
+          grandGbp += entry.prsGbp || 0; grandInr += entry.prsAmount || 0; grandCommission += entry.prsCommission || 0;
+        }
+      });
+      rows.push(['TOTAL', '', grandGbp, '', grandInr, grandCommission]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'PRS Details');
+      XLSX.writeFile(wb, `PRS_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+      return;
+    }
+
+    // Generic royalty types: Sound Exchange, ISAMRA, ASCAP, PPL, MLC
+    const fieldMap = {
+      'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission' },
+      'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission' },
+      'ASCAP': { amount: 'ascapAmount', commission: 'ascapCommission' },
+      'PPL': { amount: 'pplAmount', commission: 'pplCommission' },
+      'MLC': { amount: 'mlcAmount', commission: 'mlcCommission' },
+    };
+    const fields = fieldMap[type];
+    if (!fields) return;
+
+    const headers = ['Month', `${type} Amount`, `${type} Commission`];
+    const rows = [];
+    let grandAmount = 0, grandCommission = 0;
+    clientReportEntries.forEach(entry => {
+      const ml = `${monthLabels[entry.month]} ${entry.year}`;
+      const amt = entry[fields.amount] || 0;
+      const comm = entry[fields.commission] || 0;
+      rows.push([ml, amt, comm]);
+      grandAmount += amt;
+      grandCommission += comm;
+    });
+    rows.push(['TOTAL', grandAmount, grandCommission]);
+
+    if (format === 'pdf') {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 40);
+      doc.text(`${type} Royalty Details — ${clientName}`, 14, 18);
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+      doc.text(`${clientReportClient} | ${fyLabel} | Commission Rate: ${commRate}%`, 14, 25);
+
+      const pdfRows = rows.map(r => [r[0], fmtNum(r[1]), fmtNum(r[2])]);
+      autoTable(doc, {
+        startY: 32,
+        head: [headers],
+        body: pdfRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2.5, halign: 'right' },
+        headStyles: { fillColor: [55, 65, 81], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
+        columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: 14, right: 14 },
+        didParseCell: (data) => {
+          if (data.row.raw && data.row.raw[0] === 'TOTAL') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [229, 231, 235];
+          }
+        },
+      });
+      doc.save(`${type.replace(/\s/g, '_')}_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
+    } else {
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `${type} Details`);
+      XLSX.writeFile(wb, `${type.replace(/\s/g, '_')}_Details_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+    }
+  };
+
   const exportSelectedSectionsPDF = () => {
     if (!clientReportClient || clientReportEntries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
@@ -644,6 +779,7 @@ function ReportsPanel({ onClose }) {
         { name: 'ISAMRA', amount: e.isamraAmount || 0, comm: e.isamraCommission || 0 },
         { name: 'ASCAP', amount: e.ascapAmount || 0, comm: e.ascapCommission || 0 },
         { name: 'PPL', amount: e.pplAmount || 0, comm: e.pplCommission || 0 },
+        { name: 'MLC', amount: e.mlcAmount || 0, comm: e.mlcCommission || 0 },
       ];
       let status = 'none'; // no commission
       if (commission > 0) {
@@ -756,10 +892,10 @@ function ReportsPanel({ onClose }) {
     // ── 1. Royalty Amounts (red-mark unpaid source cells) ──
     if (sel.royalty) {
       addSectionHeader('Royalty Amounts', 'RED cells = royalty source with unpaid commission contributing to outstanding');
-      const sourceNames = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
-      const head = [['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL']];
-      const body = ee.map(e => [m(e), fmtNum(e.iprsAmount), fmtNum(e.prsAmount), fmtNum(e.soundExchangeAmount), fmtNum(e.isamraAmount), fmtNum(e.ascapAmount), fmtNum(e.pplAmount)]);
-      if (s) body.push(['TOTAL', fmtNum(s.iprsAmount), fmtNum(s.prsAmount), fmtNum(s.soundExchangeAmount), fmtNum(s.isamraAmount), fmtNum(s.ascapAmount), fmtNum(s.pplAmount)]);
+      const sourceNames = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
+      const head = [['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC']];
+      const body = ee.map(e => [m(e), fmtNum(e.iprsAmount), fmtNum(e.prsAmount), fmtNum(e.soundExchangeAmount), fmtNum(e.isamraAmount), fmtNum(e.ascapAmount), fmtNum(e.pplAmount), fmtNum(e.mlcAmount)]);
+      if (s) body.push(['TOTAL', fmtNum(s.iprsAmount), fmtNum(s.prsAmount), fmtNum(s.soundExchangeAmount), fmtNum(s.isamraAmount), fmtNum(s.ascapAmount), fmtNum(s.pplAmount), fmtNum(s.mlcAmount)]);
       autoTable(doc, { ...autoTableDefaults, head, body, didParseCell: makeDidParseCell({ colorAmountCells: true, sourceColumns: sourceNames }) });
       sectionCount++;
     }
@@ -767,9 +903,9 @@ function ReportsPanel({ onClose }) {
     // ── 2. Commission Breakdown (red-mark unpaid commission cells) ──
     if (sel.commission) {
       addSectionHeader('Commission Breakdown', 'RED = unpaid commission | ORANGE = partially paid | GREEN = fully paid');
-      const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'Total Comm.']];
-      const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.totalCommission)]);
-      if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.totalCommission)]);
+      const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'Total Comm.']];
+      const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.mlcCommission), fmtNum(e.totalCommission)]);
+      if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.mlcCommission), fmtNum(s.totalCommission)]);
 
       autoTable(doc, {
         ...autoTableDefaults, head, body,
@@ -891,7 +1027,8 @@ function ReportsPanel({ onClose }) {
         ['ISAMRA', fmtNum(s.isamraAmount), fmtNum(s.isamraCommission)],
         ['ASCAP', fmtNum(s.ascapAmount), fmtNum(s.ascapCommission)],
         ['PPL', fmtNum(s.pplAmount), fmtNum(s.pplCommission)],
-        ['Total', fmtNum((s.iprsAmount||0)+(s.prsAmount||0)+(s.soundExchangeAmount||0)+(s.isamraAmount||0)+(s.ascapAmount||0)+(s.pplAmount||0)), fmtNum(s.totalCommission)],
+        ['MLC', fmtNum(s.mlcAmount), fmtNum(s.mlcCommission)],
+        ['Total', fmtNum((s.iprsAmount||0)+(s.prsAmount||0)+(s.soundExchangeAmount||0)+(s.isamraAmount||0)+(s.ascapAmount||0)+(s.pplAmount||0)+(s.mlcAmount||0)), fmtNum(s.totalCommission)],
       ];
       autoTable(doc, {
         ...autoTableDefaults,
@@ -1087,9 +1224,9 @@ function ReportsPanel({ onClose }) {
         break;
 
       case 'commission':
-        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,Total Commission\n';
+        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,MLC,Total Commission\n';
         filteredEntries.forEach(e => {
-          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.totalCommission || 0}\n`;
+          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.mlcCommission || 0},${e.totalCommission || 0}\n`;
         });
         filename = `MRM_Commission_Report_${dateLabel}.csv`;
         break;
@@ -1163,9 +1300,9 @@ function ReportsPanel({ onClose }) {
 
     switch (reportType) {
       case 'commission':
-        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,Total Commission\n';
+        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,MLC,Total Commission\n';
         clientEntries.forEach(e => {
-          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.totalCommission || 0}\n`;
+          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.mlcCommission || 0},${e.totalCommission || 0}\n`;
         });
         filename = `MRM_Commission_${safeName}_${dateLabel}.csv`;
         break;
@@ -1393,6 +1530,10 @@ function ReportsPanel({ onClose }) {
                 <div className="stat-label">Total PPL</div>
                 <div className="stat-value">{formatCurrency(dashboardStats.totalPpl)}</div>
               </div>
+              <div className="stat-card" style={{ '--card-accent': 'var(--accent-purple)' }}>
+                <div className="stat-label">Total MLC</div>
+                <div className="stat-value">{formatCurrency(dashboardStats.totalMlc)}</div>
+              </div>
             </div>
           </div>
         )}
@@ -1505,24 +1646,78 @@ function ReportsPanel({ onClose }) {
                     </svg>
                     Export PDF
                   </button>
-                  <button className="btn btn-info" onClick={exportIprsPDF} style={{ background: '#3b82f6' }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="12" y1="11" x2="12" y2="17"></line>
-                      <polyline points="9 14 12 11 15 14"></polyline>
-                    </svg>
-                    IPRS PDF
-                  </button>
-                  <button className="btn btn-info" onClick={exportPrsPDF} style={{ background: '#8b5cf6' }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="12" y1="11" x2="12" y2="17"></line>
-                      <polyline points="9 14 12 11 15 14"></polyline>
-                    </svg>
-                    PRS PDF
-                  </button>
+                  <div ref={royaltyBreakdownRef} style={{ position: 'relative', display: 'inline-block' }}>
+                    <button className="btn btn-info" onClick={() => setShowRoyaltyBreakdown(!showRoyaltyBreakdown)} style={{ background: '#8b5cf6' }}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="11" x2="12" y2="17"></line>
+                        <polyline points="9 14 12 11 15 14"></polyline>
+                      </svg>
+                      Royalty Breakdown
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 4 }}>
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+                    {showRoyaltyBreakdown && (
+                      <div style={{
+                        position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                        padding: 16, zIndex: 100, minWidth: 260, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                      }}>
+                        <div style={{ marginBottom: 12 }}>
+                          <label style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Royalty Type</label>
+                          <select
+                            value={royaltyBreakdownType}
+                            onChange={(e) => setRoyaltyBreakdownType(e.target.value)}
+                            style={{
+                              width: '100%', padding: '8px 10px', borderRadius: 6,
+                              background: 'var(--bg-input)', color: 'var(--text-primary)',
+                              border: '1px solid var(--border)', fontSize: 13,
+                            }}
+                          >
+                            <option value="IPRS">IPRS</option>
+                            <option value="PRS">PRS</option>
+                            <option value="Sound Exchange">Sound Exchange</option>
+                            <option value="ISAMRA">ISAMRA</option>
+                            <option value="ASCAP">ASCAP</option>
+                            <option value="PPL">PPL</option>
+                            <option value="MLC">MLC</option>
+                          </select>
+                        </div>
+                        <div style={{ marginBottom: 14 }}>
+                          <label style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Format</label>
+                          <select
+                            value={royaltyBreakdownFormat}
+                            onChange={(e) => setRoyaltyBreakdownFormat(e.target.value)}
+                            style={{
+                              width: '100%', padding: '8px 10px', borderRadius: 6,
+                              background: 'var(--bg-input)', color: 'var(--text-primary)',
+                              border: '1px solid var(--border)', fontSize: 13,
+                            }}
+                          >
+                            <option value="pdf">PDF</option>
+                            <option value="excel">Excel</option>
+                          </select>
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          style={{ width: '100%' }}
+                          onClick={() => {
+                            exportRoyaltyBreakdown(royaltyBreakdownType, royaltyBreakdownFormat);
+                            setShowRoyaltyBreakdown(false);
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                          </svg>
+                          Download
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1638,9 +1833,9 @@ function ReportsPanel({ onClose }) {
                   <div className="report-header">
                     <h3>Royalty Amounts</h3>
                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL'];
-                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0]);
-                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount]); }
+                      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0, e.mlcAmount||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount]); }
                       exportSingleTableExcel('Royalty Amounts', h, rows);
                     }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1658,6 +1853,7 @@ function ReportsPanel({ onClose }) {
                           <th>ISAMRA</th>
                           <th>ASCAP</th>
                           <th>PPL</th>
+                          <th>MLC</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1670,6 +1866,7 @@ function ReportsPanel({ onClose }) {
                             <td><span className="amount">{formatCurrency(e.isamraAmount)}</span></td>
                             <td><span className="amount">{formatCurrency(e.ascapAmount)}</span></td>
                             <td><span className="amount">{formatCurrency(e.pplAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.mlcAmount)}</span></td>
                           </tr>
                         ))}
                         {clientReportSummary && (
@@ -1681,6 +1878,7 @@ function ReportsPanel({ onClose }) {
                             <td><span className="amount">{formatCurrency(clientReportSummary.isamraAmount)}</span></td>
                             <td><span className="amount">{formatCurrency(clientReportSummary.ascapAmount)}</span></td>
                             <td><span className="amount">{formatCurrency(clientReportSummary.pplAmount)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.mlcAmount)}</span></td>
                           </tr>
                         )}
                       </tbody>
@@ -1693,9 +1891,9 @@ function ReportsPanel({ onClose }) {
                   <div className="report-header">
                     <h3>Commission Breakdown <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--accent-green)' }}>+ Adds to Outstanding</span></h3>
                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'Total Commission'];
-                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.totalCommission||0]);
-                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.totalCommission]); }
+                      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.', 'Total Commission'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.mlcCommission||0, e.totalCommission||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission, s.totalCommission]); }
                       exportSingleTableExcel('Commission', h, rows);
                     }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1714,6 +1912,7 @@ function ReportsPanel({ onClose }) {
                           <th>ISAMRA Comm.</th>
                           <th>ASCAP Comm.</th>
                           <th>PPL Comm.</th>
+                          <th>MLC Comm.</th>
                           <th className="col-highlight-green">Total Commission</th>
                         </tr>
                       </thead>
@@ -1728,6 +1927,7 @@ function ReportsPanel({ onClose }) {
                             <td><span className="amount">{formatCurrency(e.isamraCommission)}</span></td>
                             <td><span className="amount">{formatCurrency(e.ascapCommission)}</span></td>
                             <td><span className="amount">{formatCurrency(e.pplCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(e.mlcCommission)}</span></td>
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.totalCommission)}</span></td>
                           </tr>
                         ))}
@@ -1741,6 +1941,7 @@ function ReportsPanel({ onClose }) {
                             <td><span className="amount">{formatCurrency(clientReportSummary.isamraCommission)}</span></td>
                             <td><span className="amount">{formatCurrency(clientReportSummary.ascapCommission)}</span></td>
                             <td><span className="amount">{formatCurrency(clientReportSummary.pplCommission)}</span></td>
+                            <td><span className="amount">{formatCurrency(clientReportSummary.mlcCommission)}</span></td>
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.totalCommission)}</span></td>
                           </tr>
                         )}
@@ -2006,7 +2207,7 @@ function ReportsPanel({ onClose }) {
                       >Deselect All</button>
                     </div>
                     {[
-                      { key: 'royalty', label: 'Royalty Amounts', desc: 'IPRS, PRS, Sound Exchange, ISAMRA, ASCAP, PPL', icon: '🎵' },
+                      { key: 'royalty', label: 'Royalty Amounts', desc: 'IPRS, PRS, Sound Exchange, ISAMRA, ASCAP, PPL, MLC', icon: '🎵' },
                       { key: 'commission', label: 'Commission Breakdown', desc: 'Commission rates and per-source commissions', icon: '💰' },
                       { key: 'gst', label: 'GST & Invoice', desc: 'GST base, GST amount, invoice totals', icon: '🧾' },
                       { key: 'receipts', label: 'Receipts & TDS', desc: 'Current/previous receipts and TDS deductions', icon: '📥' },
@@ -2132,6 +2333,7 @@ function ReportsPanel({ onClose }) {
                                     <th>ISAMRA</th>
                                     <th>ASCAP</th>
                                     <th>PPL</th>
+                                    <th>MLC</th>
                                     <th>Total</th>
                                   </tr>
                                 </thead>
@@ -2146,11 +2348,12 @@ function ReportsPanel({ onClose }) {
                                       <td><span className="amount">{formatCurrency(entry.isamraCommission)}</span></td>
                                       <td><span className="amount">{formatCurrency(entry.ascapCommission)}</span></td>
                                       <td><span className="amount">{formatCurrency(entry.pplCommission)}</span></td>
+                                      <td><span className="amount">{formatCurrency(entry.mlcCommission)}</span></td>
                                       <td><span className="amount positive">{formatCurrency(entry.totalCommission)}</span></td>
                                     </tr>
                                   ))}
                                   <tr className="summary-row">
-                                    <td colSpan="8"><strong>Total</strong></td>
+                                    <td colSpan="9"><strong>Total</strong></td>
                                     <td><span className="amount positive">{formatCurrency(clientEntries.reduce((s, e) => s + (e.totalCommission || 0), 0))}</span></td>
                                   </tr>
                                 </tbody>

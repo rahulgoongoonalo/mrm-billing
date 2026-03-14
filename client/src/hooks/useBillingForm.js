@@ -19,6 +19,7 @@ const initialFormState = {
   isamraAmount: '',
   ascapAmount: '',
   pplAmount: '',
+  mlcAmount: '',
 
   // GST & Invoice Inputs
   currentMonthGstBase: '',
@@ -57,6 +58,7 @@ export function useBillingForm() {
         isamraAmount: currentEntry.isamraAmount || '',
         ascapAmount: currentEntry.ascapAmount || '',
         pplAmount: currentEntry.pplAmount || '',
+        mlcAmount: currentEntry.mlcAmount || '',
         currentMonthGstBase: currentEntry.currentMonthGstBase || '',
         previousOutstandingGstBase: currentEntry.previousOutstandingGstBase || '',
         currentMonthReceipt: currentEntry.currentMonthReceipt || '',
@@ -136,6 +138,7 @@ export function useBillingForm() {
     const isamraAmount = parseFloat(formData.isamraAmount) || 0;
     const ascapAmount = parseFloat(formData.ascapAmount) || 0;
     const pplAmount = parseFloat(formData.pplAmount) || 0;
+    const mlcAmount = parseFloat(formData.mlcAmount) || 0;
 
     // 1. Commission Calculation
     const iprsCommission = r(iprsAmount * rate);
@@ -144,8 +147,9 @@ export function useBillingForm() {
     const isamraCommission = r(isamraAmount * rate);
     const ascapCommission = r(ascapAmount * rate);
     const pplCommission = r(pplAmount * rate);
+    const mlcCommission = r(mlcAmount * rate);
     const totalCommission = r(iprsCommission + prsCommission + soundExchangeCommission +
-      isamraCommission + ascapCommission + pplCommission);
+      isamraCommission + ascapCommission + pplCommission + mlcCommission);
 
     // 2. GST Calculation
     const currentMonthGstBase = parseFloat(formData.currentMonthGstBase) || 0;
@@ -193,6 +197,7 @@ export function useBillingForm() {
       isamraCommission,
       ascapCommission,
       pplCommission,
+      mlcCommission,
       totalCommission,
       currentMonthGst,
       currentMonthInvoiceTotal,
@@ -266,6 +271,7 @@ export function useBillingForm() {
     isamraAmount: parseFloat(formData.isamraAmount) || 0,
     ascapAmount: parseFloat(formData.ascapAmount) || 0,
     pplAmount: parseFloat(formData.pplAmount) || 0,
+    mlcAmount: parseFloat(formData.mlcAmount) || 0,
     currentMonthGstBase: parseFloat(formData.currentMonthGstBase) || 0,
     previousOutstandingGstBase: parseFloat(formData.previousOutstandingGstBase) || 0,
     currentMonthReceipt: parseFloat(formData.currentMonthReceipt) || 0,
@@ -291,6 +297,7 @@ export function useBillingForm() {
       { key: 'isamraAmount', label: 'ISAMRA Amount' },
       { key: 'ascapAmount', label: 'ASCAP Amount' },
       { key: 'pplAmount', label: 'PPL Amount' },
+      { key: 'mlcAmount', label: 'MLC Amount' },
     ];
 
     const missing = requiredFields.filter(f => {

@@ -182,6 +182,7 @@ router.post('/', async (req, res) => {
       isamraAmount: data.isamraAmount || 0,
       ascapAmount: data.ascapAmount || 0,
       pplAmount: data.pplAmount || 0,
+      mlcAmount: data.mlcAmount || 0,
       currentMonthGstBase: data.currentMonthGstBase || 0,
       previousOutstandingGstBase: data.previousOutstandingGstBase || 0,
       currentMonthReceipt: data.currentMonthReceipt || 0,
@@ -429,6 +430,7 @@ router.get('/reports/summary', async (req, res) => {
           totalIsamra: { $sum: '$isamraAmount' },
           totalAscap: { $sum: '$ascapAmount' },
           totalPpl: { $sum: '$pplAmount' },
+          totalMlc: { $sum: '$mlcAmount' },
           totalCommission: { $sum: '$totalCommission' },
           totalMonthlyOutstanding: { $sum: '$monthlyOutstanding' },
           totalFinalOutstanding: { $sum: '$totalOutstanding' }
