@@ -2,7 +2,14 @@ const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
+const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
+
+const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
+
+function getYearForMonth(month, financialYear) {
+  return ['jan', 'feb', 'mar'].includes(month) ? financialYear.endYear : financialYear.startYear;
+}
 
 // Protect all client routes
 router.use(authenticateToken);
@@ -114,7 +121,7 @@ router.post('/', async (req, res) => {
 // @access  Public
 router.put('/:id', async (req, res) => {
   try {
-    const { name, type, clientType, fee, commissionRate, previousBalance, iprs, prs, isamra, isActive } = req.body;
+    const { name, type, clientType, fee, commissionRate, previousBalance, iprs, prs, isamra, isActive, contracts } = req.body;
 
     const client = await Client.findOne({ clientId: req.params.id });
 
@@ -134,6 +141,7 @@ router.put('/:id', async (req, res) => {
     if (prs !== undefined) client.prs = prs;
     if (isamra !== undefined) client.isamra = isamra;
     if (isActive !== undefined) client.isActive = isActive;
+    if (contracts !== undefined) client.contracts = contracts;
     
     await client.save();
 
@@ -143,6 +151,38 @@ router.put('/:id', async (req, res) => {
         { clientId: req.params.id },
         { $set: { clientName: name } }
       );
+    }
+
+    // Cascade commission rate change to all RoyaltyAccounting entries (in month order)
+    if (commissionRate !== undefined) {
+      const financialYear = await Settings.getSetting('financialYear');
+      const entries = await RoyaltyAccounting.find({ clientId: req.params.id });
+
+      // Sort entries by month order within the financial year
+      entries.sort((a, b) => {
+        const aIdx = monthOrder.indexOf(a.month);
+        const bIdx = monthOrder.indexOf(b.month);
+        return aIdx - bIdx;
+      });
+
+      // Update commission rate and save in order, cascading previousMonthOutstanding
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        entry.commissionRate = parseFloat(commissionRate);
+
+        // For entries after the first, update previousMonthOutstanding from the previous entry
+        if (i > 0) {
+          const prevEntry = entries[i - 1];
+          const prevMonthIdx = monthOrder.indexOf(prevEntry.month);
+          const currMonthIdx = monthOrder.indexOf(entry.month);
+          // Only chain if this entry is the next consecutive month
+          if (currMonthIdx === prevMonthIdx + 1) {
+            entry.previousMonthOutstanding = Math.round((prevEntry.totalOutstanding + Number.EPSILON) * 100) / 100;
+          }
+        }
+
+        await entry.save(); // triggers pre-save hook to recalculate commissions & outstanding
+      }
     }
 
     res.json(client);

@@ -17,6 +17,91 @@ const formatCurrency = (amount) => {
   }).format(amount || 0);
 };
 
+function buildEmailHtml({ title, subtitle, fyStart, clientRows, grandTotal, accentColor, badgeText }) {
+  const tableRows = clientRows.map((e, idx) => `
+    <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+      <td style="padding: 10px 14px; border-bottom: 1px solid #eef0f2; color: #555; font-size: 13px;">${idx + 1}</td>
+      <td style="padding: 10px 14px; border-bottom: 1px solid #eef0f2; font-weight: 500;">${e.clientId}</td>
+      <td style="padding: 10px 14px; border-bottom: 1px solid #eef0f2;">${e.clientName}</td>
+      <td style="padding: 10px 14px; border-bottom: 1px solid #eef0f2;">${monthLabels[e.month]} ${e.year}</td>
+      <td style="padding: 10px 14px; border-bottom: 1px solid #eef0f2; text-align: right; font-weight: 600; color: ${e.totalOutstanding > 0 ? '#2563eb' : e.totalOutstanding < 0 ? '#dc2626' : '#6b7280'};">
+        ${formatCurrency(e.totalOutstanding)}
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 750px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, ${accentColor}, ${accentColor}dd); padding: 28px 32px; color: white;">
+        <h1 style="margin: 0 0 6px 0; font-size: 22px; font-weight: 700;">${title}</h1>
+        <p style="margin: 0; opacity: 0.9; font-size: 14px;">
+          FY ${fyStart}-${fyStart + 1} | ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+
+      <!-- Summary Bar -->
+      <div style="display: flex; padding: 18px 32px; background: #f8fafc; border-bottom: 1px solid #eef0f2;">
+        <div style="flex: 1;">
+          <span style="display: inline-block; background: ${accentColor}18; color: ${accentColor}; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid ${accentColor}30;">
+            ${badgeText}
+          </span>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 13px; color: #888;">Total Clients: </span>
+          <span style="font-size: 15px; font-weight: 700; color: #333;">${clientRows.length}</span>
+          <span style="margin: 0 10px; color: #ddd;">|</span>
+          <span style="font-size: 13px; color: #888;">Grand Total: </span>
+          <span style="font-size: 15px; font-weight: 700; color: ${accentColor};">${formatCurrency(grandTotal)}</span>
+        </div>
+      </div>
+
+      ${subtitle ? `<p style="padding: 12px 32px 0; margin: 0; color: #666; font-size: 13px;">${subtitle}</p>` : ''}
+
+      <!-- Table -->
+      <div style="padding: 16px 24px 24px;">
+        ${clientRows.length === 0 ? `
+          <div style="text-align: center; padding: 40px 20px; color: #999;">
+            <p style="font-size: 16px; margin: 0;">No clients in this category</p>
+          </div>
+        ` : `
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="background: #f1f5f9;">
+                <th style="padding: 12px 14px; text-align: left; border-bottom: 2px solid ${accentColor}40; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">#</th>
+                <th style="padding: 12px 14px; text-align: left; border-bottom: 2px solid ${accentColor}40; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Client ID</th>
+                <th style="padding: 12px 14px; text-align: left; border-bottom: 2px solid ${accentColor}40; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Client Name</th>
+                <th style="padding: 12px 14px; text-align: left; border-bottom: 2px solid ${accentColor}40; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Latest Month</th>
+                <th style="padding: 12px 14px; text-align: right; border-bottom: 2px solid ${accentColor}40; color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4" style="padding: 14px; border-top: 2px solid ${accentColor}40; font-weight: 700; font-size: 14px; color: #333;">
+                  Grand Total (${clientRows.length} clients)
+                </td>
+                <td style="padding: 14px; border-top: 2px solid ${accentColor}40; text-align: right; font-weight: 700; font-size: 16px; color: ${accentColor};">
+                  ${formatCurrency(grandTotal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        `}
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 16px 32px; background: #f8fafc; border-top: 1px solid #eef0f2; text-align: center;">
+        <p style="margin: 0; color: #aaa; font-size: 11px;">
+          Automated email from MRM Billing App | Generated at ${new Date().toLocaleTimeString('en-IN')}
+        </p>
+      </div>
+    </div>
+  `;
+}
+
 async function sendOutstandingNotification() {
   try {
     const financialYear = await Settings.getSetting('financialYear');
@@ -46,66 +131,62 @@ async function sendOutstandingNotification() {
       }
     });
 
-    const clientRows = Object.values(latestByClient)
-      .sort((a, b) =>
-        (parseInt(a.clientId?.match(/(\d+)/)?.[1], 10) || 0) -
-        (parseInt(b.clientId?.match(/(\d+)/)?.[1], 10) || 0)
-      );
+    const allClients = Object.values(latestByClient);
 
-    const grandTotal = clientRows.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+    // Split into two groups
+    const positiveClients = allClients
+      .filter(e => (e.totalOutstanding || 0) > 0)
+      .sort((a, b) => (b.totalOutstanding || 0) - (a.totalOutstanding || 0)); // Greatest to smallest
 
-    // Build HTML email
-    const tableRows = clientRows.map(e => `
-      <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${e.clientId}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${e.clientName}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${monthLabels[e.month]} ${e.year}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right; font-weight: 500;">${formatCurrency(e.totalOutstanding)}</td>
-      </tr>
-    `).join('');
+    const zeroNegativeClients = allClients
+      .filter(e => (e.totalOutstanding || 0) <= 0)
+      .sort((a, b) => (a.totalOutstanding || 0) - (b.totalOutstanding || 0)); // Most negative first
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
-        <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
-          Daily Outstanding Report
-        </h2>
-        <p style="color: #666; font-size: 14px;">
-          FY ${fyStart}-${fyStart + 1} | Generated on ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-        </p>
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-          <thead>
-            <tr style="background: #f8f9fa;">
-              <th style="padding: 10px 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Client ID</th>
-              <th style="padding: 10px 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Client Name</th>
-              <th style="padding: 10px 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Latest Month</th>
-              <th style="padding: 10px 12px; text-align: right; border-bottom: 2px solid #dee2e6;">Total Outstanding</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-          <tfoot>
-            <tr style="background: #f8f9fa; font-weight: bold;">
-              <td colspan="3" style="padding: 10px 12px; border-top: 2px solid #dee2e6;">Grand Total (${clientRows.length} clients)</td>
-              <td style="padding: 10px 12px; border-top: 2px solid #dee2e6; text-align: right; color: #007bff;">${formatCurrency(grandTotal)}</td>
-            </tr>
-          </tfoot>
-        </table>
-        <p style="color: #999; font-size: 12px; margin-top: 20px;">
-          This is an automated email from MRM Billing App.
-        </p>
-      </div>
-    `;
+    const positiveTotal = positiveClients.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+    const zeroNegativeTotal = zeroNegativeClients.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
 
-    const mailOptions = {
+    const recipients = 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com';
+    const dateStr = new Date().toLocaleDateString('en-IN');
+
+    // --- MAIL 1: Positive Outstanding (greater than 0) ---
+    const positiveHtml = buildEmailHtml({
+      title: 'Outstanding Report - Receivables',
+      subtitle: 'Clients with outstanding amount greater than zero, sorted from highest to lowest.',
+      fyStart,
+      clientRows: positiveClients,
+      grandTotal: positiveTotal,
+      accentColor: '#2563eb',
+      badgeText: 'RECEIVABLES (> 0)'
+    });
+
+    await getTransporter().sendMail({
       from: process.env.EMAIL_FROM,
-      to: 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com',
-      subject: `MRM Outstanding Report - ${new Date().toLocaleDateString('en-IN')}`,
-      html
-    };
+      to: recipients,
+      subject: `MRM Receivables Report - ${dateStr} (${positiveClients.length} clients | ${formatCurrency(positiveTotal)})`,
+      html: positiveHtml
+    });
+    console.log(`Mail 1 (Positive Outstanding) sent: ${positiveClients.length} clients, total ${formatCurrency(positiveTotal)}`);
 
-    await getTransporter().sendMail(mailOptions);
-    console.log('Outstanding notification email sent successfully at', new Date().toLocaleString());
+    // --- MAIL 2: Zero & Negative Outstanding ---
+    const zeroNegativeHtml = buildEmailHtml({
+      title: 'Outstanding Report - Cleared & Overpaid',
+      subtitle: 'Clients with zero or negative outstanding balance (overpaid / advance).',
+      fyStart,
+      clientRows: zeroNegativeClients,
+      grandTotal: zeroNegativeTotal,
+      accentColor: '#059669',
+      badgeText: 'CLEARED & OVERPAID (\u2264 0)'
+    });
+
+    await getTransporter().sendMail({
+      from: process.env.EMAIL_FROM,
+      to: recipients,
+      subject: `MRM Cleared/Overpaid Report - ${dateStr} (${zeroNegativeClients.length} clients | ${formatCurrency(zeroNegativeTotal)})`,
+      html: zeroNegativeHtml
+    });
+    console.log(`Mail 2 (Zero/Negative Outstanding) sent: ${zeroNegativeClients.length} clients, total ${formatCurrency(zeroNegativeTotal)}`);
+
+    console.log('Both outstanding notification emails sent successfully at', new Date().toLocaleString());
   } catch (error) {
     console.error('Failed to send outstanding notification:', error.message);
   }

@@ -57,6 +57,21 @@ const clientSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  contracts: [{
+    society: {
+      type: String,
+      enum: ['IPRS', 'PRS', 'ASCAP', 'ISAMRA', 'PPL', 'MLC', 'Sound Exchange'],
+      required: true
+    },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    endDate: {
+      type: Date,
+      default: null
+    }
+  }],
   isActive: {
     type: Boolean,
     default: true

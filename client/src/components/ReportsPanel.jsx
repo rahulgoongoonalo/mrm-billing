@@ -147,6 +147,12 @@ function ReportsPanel({ onClose }) {
   const [clientReportDropdownOpen, setClientReportDropdownOpen] = useState(false);
   const clientReportDropdownRef = useRef(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [contractSearch, setContractSearch] = useState('');
+  const [editingContracts, setEditingContracts] = useState(null);
+  const [expandedContractClient, setExpandedContractClient] = useState(null);
+
+  const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'ISAMRA', 'PPL', 'MLC', 'Sound Exchange'];
+  const societyClass = (s) => 'society-' + s.toLowerCase().replace(/\s+/g, '');
   const [showRoyaltyBreakdown, setShowRoyaltyBreakdown] = useState(false);
   const [royaltyBreakdownType, setRoyaltyBreakdownType] = useState('IPRS');
   const [royaltyBreakdownFormat, setRoyaltyBreakdownFormat] = useState('pdf');
@@ -1355,6 +1361,7 @@ function ReportsPanel({ onClose }) {
     { id: 'gst-invoice', label: 'GST & Invoice', icon: 'file-text' },
     { id: 'receipts-tds', label: 'Receipts & TDS', icon: 'credit-card' },
     { id: 'outstanding', label: 'Outstanding', icon: 'alert' },
+    { id: 'society-contracts', label: 'Society Contracts', icon: 'briefcase' },
   ];
 
   return (
@@ -1394,6 +1401,7 @@ function ReportsPanel({ onClose }) {
                 {item.icon === 'file-text' && <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></>}
                 {item.icon === 'credit-card' && <><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></>}
                 {item.icon === 'clipboard' && <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></>}
+                {item.icon === 'briefcase' && <><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></>}
               </svg>
               <span>{item.label}</span>
             </button>
@@ -2723,7 +2731,311 @@ function ReportsPanel({ onClose }) {
             </div>
           </div>
         )}
+
+        {/* Society Contracts */}
+        {activeReport === 'society-contracts' && (() => {
+          const activeClients = clients.filter(c => c.isActive);
+          const filteredContractClients = activeClients
+            .filter(c => !contractSearch || c.name.toLowerCase().includes(contractSearch.toLowerCase()) || c.clientId.toLowerCase().includes(contractSearch.toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const now = new Date();
+          const getContractStatus = (client, society) => {
+            const ct = (client.contracts || []).find(c => c.society === society);
+            if (!ct) return 'none';
+            if (ct.endDate && new Date(ct.endDate) < now) return 'expired';
+            if (ct.startDate) return 'active';
+            return 'none';
+          };
+          return (
+          <div className="report-section active">
+            <div className="report-page-header">
+              <div className="report-page-title">
+                <h2>Society Contracts</h2>
+                <p>Track and manage contract dates across all societies</p>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const headers = ['Client ID', 'Client Name', 'Type', ...SOCIETIES.flatMap(s => [`${s} Start`, `${s} End`, `${s} Status`])];
+                  let csv = headers.join(',') + '\n';
+                  activeClients.forEach(client => {
+                    const row = [client.clientId, `"${client.name}"`, client.type || ''];
+                    SOCIETIES.forEach(society => {
+                      const contract = (client.contracts || []).find(c => c.society === society);
+                      if (contract) {
+                        const start = contract.startDate ? new Date(contract.startDate).toLocaleDateString('en-IN') : '';
+                        const end = contract.endDate ? new Date(contract.endDate).toLocaleDateString('en-IN') : '';
+                        const isExpired = contract.endDate && new Date(contract.endDate) < now;
+                        row.push(start, end, isExpired ? 'Expired' : 'Active');
+                      } else {
+                        row.push('', '', 'No Contract');
+                      }
+                    });
+                    csv += row.join(',') + '\n';
+                  });
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `MRM_Society_Contracts_${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export CSV
+              </button>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="society-contracts-grid">
+              {SOCIETIES.map(society => {
+                const withContract = activeClients.filter(c => (c.contracts || []).some(ct => ct.society === society));
+                const activeContracts = withContract.filter(c => getContractStatus(c, society) === 'active');
+                const expiredContracts = withContract.filter(c => getContractStatus(c, society) === 'expired');
+                return (
+                  <div key={society} className={`society-stat-card ${societyClass(society)}`}>
+                    <div className="society-name">{society}</div>
+                    <div className="society-count">
+                      {withContract.length} <span className="society-total">/ {activeClients.length}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {activeContracts.length > 0 && (
+                        <div className="society-active-count">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                          {activeContracts.length} active
+                        </div>
+                      )}
+                      {expiredContracts.length > 0 && (
+                        <div className="society-expired">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                          {expiredContracts.length} expired
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Search */}
+            <div className="contract-search-bar">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by client name or ID..."
+                value={contractSearch}
+                onChange={(e) => setContractSearch(e.target.value)}
+              />
+              <span className="search-count">{filteredContractClients.length} clients</span>
+            </div>
+
+            {/* Client Accordion List */}
+            <div className="contract-client-list">
+              {filteredContractClients.length === 0 ? (
+                <div className="report-empty">No clients found matching your search.</div>
+              ) : (
+                filteredContractClients.map(client => {
+                  const isExpanded = expandedContractClient === client.clientId;
+                  const clientContracts = client.contracts || [];
+                  const activeCount = SOCIETIES.filter(s => getContractStatus(client, s) === 'active').length;
+                  const expiredCount = SOCIETIES.filter(s => getContractStatus(client, s) === 'expired').length;
+
+                  return (
+                    <div key={client.clientId} className={`contract-client-card ${isExpanded ? 'expanded' : ''}`}>
+                      <div
+                        className="contract-client-header"
+                        onClick={() => setExpandedContractClient(isExpanded ? null : client.clientId)}
+                      >
+                        <div className="client-avatar" style={{ width: 36, height: 36, fontSize: 12 }}>
+                          {getClientInitials(client.name)}
+                        </div>
+                        <div className="contract-client-info">
+                          <div className="name">{client.name}</div>
+                          <div className="meta">
+                            <span className="client-id-tag">{client.clientId}</span>
+                            <span>{client.type || 'Composer'}</span>
+                            {activeCount > 0 && <span style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{activeCount} active</span>}
+                            {expiredCount > 0 && <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}>{expiredCount} expired</span>}
+                          </div>
+                        </div>
+                        <div className="contract-society-pills">
+                          {SOCIETIES.map(society => {
+                            const status = getContractStatus(client, society);
+                            return (
+                              <span key={society} className={`contract-pill ${status}`}>
+                                {society === 'Sound Exchange' ? 'SE' : society}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <svg className={`chevron ${isExpanded ? 'open' : ''}`} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="contract-detail">
+                          <div className="contract-detail-grid">
+                            {SOCIETIES.map(society => {
+                              const contract = clientContracts.find(c => c.society === society);
+                              const status = getContractStatus(client, society);
+                              return (
+                                <div key={society} className={`contract-detail-item ${societyClass(society)}`}>
+                                  <div className="society-label">
+                                    {society}
+                                    {status !== 'none' && (
+                                      <span className={`contract-pill ${status}`} style={{ fontSize: 9 }}>
+                                        {status === 'active' ? 'Active' : 'Expired'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {contract ? (
+                                    <>
+                                      <div className="date-row">
+                                        <span className="date-label">From</span>
+                                        <span className="date-value">
+                                          {contract.startDate ? new Date(contract.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                        </span>
+                                      </div>
+                                      <div className="date-row">
+                                        <span className="date-label">To</span>
+                                        <span className="date-value" style={{ color: status === 'expired' ? 'var(--accent-red)' : 'var(--text-primary)' }}>
+                                          {contract.endDate ? new Date(contract.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                        </span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="no-contract">No contract</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="contract-detail-actions">
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => {
+                                const existingContracts = SOCIETIES.map(society => {
+                                  const existing = clientContracts.find(c => c.society === society);
+                                  return {
+                                    society,
+                                    startDate: existing?.startDate ? new Date(existing.startDate).toISOString().split('T')[0] : '',
+                                    endDate: existing?.endDate ? new Date(existing.endDate).toISOString().split('T')[0] : ''
+                                  };
+                                });
+                                setEditingContracts({
+                                  clientId: client.clientId,
+                                  clientName: client.name,
+                                  contracts: existingContracts
+                                });
+                              }}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                              </svg>
+                              Edit Contracts
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          );
+        })()}
       </div>
+
+      {/* Contract Edit Modal */}
+      {editingContracts && (
+        <div className="modal-overlay show" onClick={() => setEditingContracts(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+            <div className="modal-header">
+              <div>
+                <h3>Edit Contracts</h3>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>{editingContracts.clientName}</div>
+              </div>
+              <button className="modal-close" onClick={() => setEditingContracts(null)}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {editingContracts.contracts.map((contract, idx) => (
+                  <div key={contract.society} className={`contract-modal-item ${societyClass(contract.society)}`}>
+                    <div className="contract-modal-label">{contract.society}</div>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: 10, marginBottom: 4 }}>Start Date</label>
+                      <input
+                        type="date"
+                        value={contract.startDate}
+                        onChange={(e) => {
+                          const updated = [...editingContracts.contracts];
+                          updated[idx] = { ...updated[idx], startDate: e.target.value };
+                          setEditingContracts({ ...editingContracts, contracts: updated });
+                        }}
+                        style={{ fontSize: 12, padding: '8px 10px' }}
+                      />
+                    </div>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label style={{ fontSize: 10, marginBottom: 4 }}>End Date</label>
+                      <input
+                        type="date"
+                        value={contract.endDate}
+                        onChange={(e) => {
+                          const updated = [...editingContracts.contracts];
+                          updated[idx] = { ...updated[idx], endDate: e.target.value };
+                          setEditingContracts({ ...editingContracts, contracts: updated });
+                        }}
+                        style={{ fontSize: 12, padding: '8px 10px' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setEditingContracts(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  try {
+                    const contractsToSave = editingContracts.contracts
+                      .filter(c => c.startDate || c.endDate)
+                      .map(c => ({
+                        society: c.society,
+                        startDate: c.startDate || null,
+                        endDate: c.endDate || null
+                      }));
+                    await updateClient(editingContracts.clientId, { contracts: contractsToSave });
+                    setEditingContracts(null);
+                  } catch (error) {
+                    // updateClient already shows toast
+                  }
+                }}
+              >
+                Save Contracts
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Client Detail Edit Modal */}
       {selectedClientForEdit && editFormData && (
