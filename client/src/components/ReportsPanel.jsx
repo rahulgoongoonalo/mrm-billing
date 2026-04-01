@@ -156,6 +156,7 @@ function ReportsPanel({ onClose }) {
   const [showRoyaltyBreakdown, setShowRoyaltyBreakdown] = useState(false);
   const [royaltyBreakdownType, setRoyaltyBreakdownType] = useState('IPRS');
   const [royaltyBreakdownFormat, setRoyaltyBreakdownFormat] = useState('pdf');
+  const [royaltyBreakdownMonths, setRoyaltyBreakdownMonths] = useState(null);
   const royaltyBreakdownRef = useRef(null);
   const [selectedExportSections, setSelectedExportSections] = useState({
     royalty: true,
@@ -499,8 +500,9 @@ function ReportsPanel({ onClose }) {
   };
 
   // ── IPRS Detail PDF Export ──
-  const exportIprsPDF = () => {
-    if (!clientReportClient || clientReportEntries.length === 0) return;
+  const exportIprsPDF = (filteredEntries) => {
+    const entries = filteredEntries || clientReportEntries;
+    if (!clientReportClient || entries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
     const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
@@ -519,7 +521,7 @@ function ReportsPanel({ onClose }) {
     const allRows = [];
     let grandReceived = 0, grandTds = 0, grandAfterTds = 0, grandCommission = 0;
 
-    clientReportEntries.forEach(entry => {
+    entries.forEach(entry => {
       const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
       if (entry.iprsEntries && entry.iprsEntries.length > 0) {
         entry.iprsEntries.forEach(row => {
@@ -567,8 +569,9 @@ function ReportsPanel({ onClose }) {
   };
 
   // ── PRS Detail PDF Export ──
-  const exportPrsPDF = () => {
-    if (!clientReportClient || clientReportEntries.length === 0) return;
+  const exportPrsPDF = (filteredEntries) => {
+    const entries = filteredEntries || clientReportEntries;
+    if (!clientReportClient || entries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
     const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
@@ -586,7 +589,7 @@ function ReportsPanel({ onClose }) {
     const allRows = [];
     let grandGbp = 0, grandInr = 0, grandCommission = 0;
 
-    clientReportEntries.forEach(entry => {
+    entries.forEach(entry => {
       const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
       if (entry.prsEntries && entry.prsEntries.length > 0) {
         entry.prsEntries.forEach(row => {
@@ -636,8 +639,11 @@ function ReportsPanel({ onClose }) {
   };
 
   // ── Generic Royalty Breakdown Export (PDF / Excel) ──
-  const exportRoyaltyBreakdown = (type, format) => {
-    if (!clientReportClient || clientReportEntries.length === 0) return;
+  const exportRoyaltyBreakdown = (type, format, selectedMonthKeys) => {
+    const filteredEntries = (selectedMonthKeys && selectedMonthKeys.length > 0)
+      ? clientReportEntries.filter(e => selectedMonthKeys.includes(`${e.month}-${e.year}`))
+      : clientReportEntries;
+    if (!clientReportClient || filteredEntries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
     const fyLabel = `FY ${financialYear.startYear}-${financialYear.endYear}`;
@@ -646,12 +652,12 @@ function ReportsPanel({ onClose }) {
 
     // Special handling for IPRS and PRS (they have detailed entries)
     if (type === 'IPRS') {
-      if (format === 'pdf') { exportIprsPDF(); return; }
+      if (format === 'pdf') { exportIprsPDF(filteredEntries); return; }
       // Excel export for IPRS
       const headers = ['Month', 'Date of Royalty Received', 'Received Royalty Amount', 'TDS Deduction', 'After TDS Received Royalty', 'Commission'];
       const rows = [];
       let grandReceived = 0, grandTds = 0, grandAfterTds = 0, grandCommission = 0;
-      clientReportEntries.forEach(entry => {
+      filteredEntries.forEach(entry => {
         const ml = `${monthLabels[entry.month]} ${entry.year}`;
         if (entry.iprsEntries && entry.iprsEntries.length > 0) {
           entry.iprsEntries.forEach(row => {
@@ -674,12 +680,12 @@ function ReportsPanel({ onClose }) {
     }
 
     if (type === 'PRS') {
-      if (format === 'pdf') { exportPrsPDF(); return; }
+      if (format === 'pdf') { exportPrsPDF(filteredEntries); return; }
       // Excel export for PRS
       const headers = ['Month', 'Date of Royalty Received', 'Received Royalty (GBP)', 'GBP to INR Rate', 'Received Royalty (INR)', 'Commission'];
       const rows = [];
       let grandGbp = 0, grandInr = 0, grandCommission = 0;
-      clientReportEntries.forEach(entry => {
+      filteredEntries.forEach(entry => {
         const ml = `${monthLabels[entry.month]} ${entry.year}`;
         if (entry.prsEntries && entry.prsEntries.length > 0) {
           entry.prsEntries.forEach(row => {
@@ -714,7 +720,7 @@ function ReportsPanel({ onClose }) {
     const headers = ['Month', `${type} Amount`, `${type} Commission`];
     const rows = [];
     let grandAmount = 0, grandCommission = 0;
-    clientReportEntries.forEach(entry => {
+    filteredEntries.forEach(entry => {
       const ml = `${monthLabels[entry.month]} ${entry.year}`;
       const amt = entry[fields.amount] || 0;
       const comm = entry[fields.commission] || 0;
@@ -1654,7 +1660,7 @@ function ReportsPanel({ onClose }) {
                     Export PDF
                   </button>
                   <div ref={royaltyBreakdownRef} style={{ position: 'relative', display: 'inline-block' }}>
-                    <button className="btn btn-info" onClick={() => setShowRoyaltyBreakdown(!showRoyaltyBreakdown)} style={{ background: '#8b5cf6' }}>
+                    <button className="btn btn-info" onClick={() => { if (!showRoyaltyBreakdown) setRoyaltyBreakdownMonths(clientReportEntries.map(e => `${e.month}-${e.year}`)); setShowRoyaltyBreakdown(!showRoyaltyBreakdown); }} style={{ background: '#8b5cf6' }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
@@ -1707,11 +1713,48 @@ function ReportsPanel({ onClose }) {
                             <option value="excel">Excel</option>
                           </select>
                         </div>
+                        <div style={{ marginBottom: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Months</label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button type="button" onClick={() => setRoyaltyBreakdownMonths(clientReportEntries.map(e => `${e.month}-${e.year}`))}
+                                style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>All</button>
+                              <button type="button" onClick={() => setRoyaltyBreakdownMonths([])}
+                                style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>None</button>
+                            </div>
+                          </div>
+                          <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 0' }}>
+                            {clientReportEntries.map(entry => {
+                              const key = `${entry.month}-${entry.year}`;
+                              const label = `${monthLabels[entry.month]} ${entry.year}`;
+                              const allKeys = clientReportEntries.map(e => `${e.month}-${e.year}`);
+                              const currentSelection = royaltyBreakdownMonths || allKeys;
+                              const checked = currentSelection.includes(key);
+                              return (
+                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      const cur = royaltyBreakdownMonths || allKeys;
+                                      if (cur.includes(key)) {
+                                        setRoyaltyBreakdownMonths(cur.filter(k => k !== key));
+                                      } else {
+                                        setRoyaltyBreakdownMonths([...cur, key]);
+                                      }
+                                    }}
+                                  />
+                                  {label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <button
                           className="btn btn-primary"
                           style={{ width: '100%' }}
                           onClick={() => {
-                            exportRoyaltyBreakdown(royaltyBreakdownType, royaltyBreakdownFormat);
+                            exportRoyaltyBreakdown(royaltyBreakdownType, royaltyBreakdownFormat, royaltyBreakdownMonths);
                             setShowRoyaltyBreakdown(false);
                           }}
                         >
