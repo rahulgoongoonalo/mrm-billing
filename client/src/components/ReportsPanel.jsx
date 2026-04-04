@@ -455,7 +455,7 @@ function ReportsPanel({ onClose }) {
     {
       const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Extra Amount', 'Total Outstanding'];
       const rows = ee.map(e => [m(e), e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.extraAmount||0, e.totalOutstanding||0]);
-      if (s) rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, sum(x => x.extraAmount), s.totalOutstanding]);
+      if (s) rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, ee.reduce((a,x)=>a+(x.extraAmount||0),0), s.totalOutstanding]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Outstanding');
     }
 
