@@ -20,6 +20,7 @@ const initialFormState = {
   ascapAmount: '',
   pplAmount: '',
   mlcAmount: '',
+  extraAmount: '',
 
   // GST & Invoice Inputs
   currentMonthGstBase: '',
@@ -59,6 +60,7 @@ export function useBillingForm() {
         ascapAmount: currentEntry.ascapAmount || '',
         pplAmount: currentEntry.pplAmount || '',
         mlcAmount: currentEntry.mlcAmount || '',
+        extraAmount: currentEntry.extraAmount || '',
         currentMonthGstBase: currentEntry.currentMonthGstBase || '',
         previousOutstandingGstBase: currentEntry.previousOutstandingGstBase || '',
         currentMonthReceipt: currentEntry.currentMonthReceipt || '',
@@ -182,12 +184,15 @@ export function useBillingForm() {
     const previousMonthReceipt = parseFloat(formData.previousMonthReceipt) || 0;
     const previousMonthTds = parseFloat(formData.previousMonthTds) || 0;
 
+    const extraAmount = parseFloat(formData.extraAmount) || 0;
+
     const totalOutstanding = r(
       previousInvoicePending +
       previousOutstandingInvoiceTotal -
       previousMonthReceipt -
       previousMonthTds +
-      monthlyOutstanding
+      monthlyOutstanding -
+      extraAmount
     );
 
     return {
@@ -272,6 +277,7 @@ export function useBillingForm() {
     ascapAmount: parseFloat(formData.ascapAmount) || 0,
     pplAmount: parseFloat(formData.pplAmount) || 0,
     mlcAmount: parseFloat(formData.mlcAmount) || 0,
+    extraAmount: parseFloat(formData.extraAmount) || 0,
     currentMonthGstBase: parseFloat(formData.currentMonthGstBase) || 0,
     previousOutstandingGstBase: parseFloat(formData.previousOutstandingGstBase) || 0,
     currentMonthReceipt: parseFloat(formData.currentMonthReceipt) || 0,

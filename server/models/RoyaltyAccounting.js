@@ -40,6 +40,7 @@ const royaltyAccountingSchema = new mongoose.Schema({
   ascapAmount: { type: Number, default: 0 },
   pplAmount: { type: Number, default: 0 },
   mlcAmount: { type: Number, default: 0 },
+  extraAmount: { type: Number, default: 0 },
 
   // Computed Commission Values
   iprsCommission: { type: Number, default: 0 },
@@ -147,7 +148,8 @@ function computeFields(doc) {
     doc.previousOutstandingInvoiceTotal -
     (doc.previousMonthReceipt || 0) -
     (doc.previousMonthTds || 0) +
-    doc.monthlyOutstanding
+    doc.monthlyOutstanding -
+    (doc.extraAmount || 0)
   );
 
   return doc;

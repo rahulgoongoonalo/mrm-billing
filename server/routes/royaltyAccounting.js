@@ -183,6 +183,7 @@ router.post('/', async (req, res) => {
       ascapAmount: data.ascapAmount || 0,
       pplAmount: data.pplAmount || 0,
       mlcAmount: data.mlcAmount || 0,
+      extraAmount: data.extraAmount || 0,
       currentMonthGstBase: data.currentMonthGstBase || 0,
       previousOutstandingGstBase: data.previousOutstandingGstBase || 0,
       currentMonthReceipt: data.currentMonthReceipt || 0,

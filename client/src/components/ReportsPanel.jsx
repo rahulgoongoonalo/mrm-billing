@@ -336,7 +336,7 @@ function ReportsPanel({ onClose }) {
       'Prev. GST Base', 'Prev. GST', 'Prev. Invoice Total',
       'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS',
       'Prev. Month O/S (Carry-Forward)', 'Invoice Pending (Current)', 'Prev. Invoice Pending',
-      'Monthly Outstanding', 'Total Outstanding', 'Status'
+      'Monthly Outstanding', 'Extra Amount', 'Total Outstanding', 'Status'
     ];
 
     const dataRows = clientReportEntries.map(e => [
@@ -349,7 +349,7 @@ function ReportsPanel({ onClose }) {
       e.previousOutstandingGstBase || 0, e.previousOutstandingGst || 0, e.previousOutstandingInvoiceTotal || 0,
       e.currentMonthReceipt || 0, e.currentMonthTds || 0, e.previousMonthReceipt || 0, e.previousMonthTds || 0,
       e.previousMonthOutstanding || 0, e.invoicePendingCurrentMonth || 0, e.previousInvoicePending || 0,
-      e.monthlyOutstanding || 0, e.totalOutstanding || 0, e.status || ''
+      e.monthlyOutstanding || 0, e.extraAmount || 0, e.totalOutstanding || 0, e.status || ''
     ]);
 
     // Add totals row
@@ -365,7 +365,7 @@ function ReportsPanel({ onClose }) {
         s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal,
         s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds,
         s.previousMonthOutstanding, s.invoicePendingCurrentMonth, s.previousInvoicePending,
-        s.monthlyOutstanding, s.totalOutstanding, ''
+        s.monthlyOutstanding, clientReportEntries.reduce((a,x)=>a+(x.extraAmount||0),0), s.totalOutstanding, ''
       ]);
     }
 
@@ -453,9 +453,9 @@ function ReportsPanel({ onClose }) {
 
     // 5. Outstanding Tracking
     {
-      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Total Outstanding'];
-      const rows = ee.map(e => [m(e), e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.totalOutstanding||0]);
-      if (s) rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, s.totalOutstanding]);
+      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Extra Amount', 'Total Outstanding'];
+      const rows = ee.map(e => [m(e), e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.extraAmount||0, e.totalOutstanding||0]);
+      if (s) rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, sum(x => x.extraAmount), s.totalOutstanding]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Outstanding');
     }
 
@@ -981,9 +981,9 @@ function ReportsPanel({ onClose }) {
     // ── 5. Outstanding Tracking (full row coloring) ──
     if (sel.outstanding) {
       addSectionHeader('Outstanding Tracking', 'RED = unpaid (adds to O/S) | ORANGE = partially paid | GREEN = fully settled');
-      const head = [['Month', 'Prev O/S', 'Total Comm.', 'Cur. Inv.', 'Prev. Inv.', 'Cur. Rcpt', 'Cur. TDS', 'Prev. Rcpt', 'Prev. TDS', 'Inv. Pending', 'Prev. Inv. Pend.', 'Monthly O/S', 'Total O/S']];
-      const body = ee.map(e => [m(e), fmtNum(e.previousMonthOutstanding), fmtNum(e.totalCommission), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingInvoiceTotal), fmtNum(e.currentMonthReceipt), fmtNum(e.currentMonthTds), fmtNum(e.previousMonthReceipt), fmtNum(e.previousMonthTds), fmtNum(e.invoicePendingCurrentMonth), fmtNum(e.previousInvoicePending), fmtNum(e.monthlyOutstanding), fmtNum(e.totalOutstanding)]);
-      if (s) body.push(['TOTAL', fmtNum(s.previousMonthOutstanding), fmtNum(s.totalCommission), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingInvoiceTotal), fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(s.invoicePendingCurrentMonth), fmtNum(s.previousInvoicePending), fmtNum(s.monthlyOutstanding), fmtNum(s.totalOutstanding)]);
+      const head = [['Month', 'Prev O/S', 'Total Comm.', 'Cur. Inv.', 'Prev. Inv.', 'Cur. Rcpt', 'Cur. TDS', 'Prev. Rcpt', 'Prev. TDS', 'Inv. Pending', 'Prev. Inv. Pend.', 'Monthly O/S', 'Extra Amt', 'Total O/S']];
+      const body = ee.map(e => [m(e), fmtNum(e.previousMonthOutstanding), fmtNum(e.totalCommission), fmtNum(e.currentMonthInvoiceTotal), fmtNum(e.previousOutstandingInvoiceTotal), fmtNum(e.currentMonthReceipt), fmtNum(e.currentMonthTds), fmtNum(e.previousMonthReceipt), fmtNum(e.previousMonthTds), fmtNum(e.invoicePendingCurrentMonth), fmtNum(e.previousInvoicePending), fmtNum(e.monthlyOutstanding), fmtNum(e.extraAmount), fmtNum(e.totalOutstanding)]);
+      if (s) body.push(['TOTAL', fmtNum(s.previousMonthOutstanding), fmtNum(s.totalCommission), fmtNum(s.currentMonthInvoiceTotal), fmtNum(s.previousOutstandingInvoiceTotal), fmtNum(s.currentMonthReceipt), fmtNum(s.currentMonthTds), fmtNum(s.previousMonthReceipt), fmtNum(s.previousMonthTds), fmtNum(s.invoicePendingCurrentMonth), fmtNum(s.previousInvoicePending), fmtNum(s.monthlyOutstanding), fmtNum(ee.reduce((a,x)=>a+(x.extraAmount||0),0)), fmtNum(s.totalOutstanding)]);
       autoTable(doc, { ...autoTableDefaults, head, body, styles: { ...autoTableDefaults.styles, fontSize: 7 }, didParseCell: makeDidParseCell({ colorFullRow: true }) });
       sectionCount++;
     }
@@ -2115,9 +2115,9 @@ function ReportsPanel({ onClose }) {
                   <div className="report-header">
                     <h3>Outstanding Tracking</h3>
                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Total Outstanding'];
-                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.totalOutstanding||0]);
-                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, s.totalOutstanding]); }
+                      const h = ['Month', 'Prev. O/S (Carry-Forward)', 'Total Commission', 'Cur. Invoice Total', 'Prev. Invoice Total', 'Cur. Receipt', 'Cur. TDS', 'Prev. Receipt', 'Prev. TDS', 'Invoice Pending (Cur.)', 'Prev. Invoice Pending', 'Monthly Outstanding', 'Extra Amount', 'Total Outstanding'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.previousMonthOutstanding||0, e.totalCommission||0, e.currentMonthInvoiceTotal||0, e.previousOutstandingInvoiceTotal||0, e.currentMonthReceipt||0, e.currentMonthTds||0, e.previousMonthReceipt||0, e.previousMonthTds||0, e.invoicePendingCurrentMonth||0, e.previousInvoicePending||0, e.monthlyOutstanding||0, e.extraAmount||0, e.totalOutstanding||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.previousMonthOutstanding, s.totalCommission, s.currentMonthInvoiceTotal, s.previousOutstandingInvoiceTotal, s.currentMonthReceipt, s.currentMonthTds, s.previousMonthReceipt, s.previousMonthTds, s.invoicePendingCurrentMonth, s.previousInvoicePending, s.monthlyOutstanding, clientReportEntries.reduce((a,x)=>a+(x.extraAmount||0),0), s.totalOutstanding]); }
                       exportSingleTableExcel('Outstanding', h, rows);
                     }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -2140,6 +2140,7 @@ function ReportsPanel({ onClose }) {
                           <th className="col-highlight-green">Invoice Pending (Cur.)</th>
                           <th className="col-highlight-green">Prev. Invoice Pending</th>
                           <th>Monthly O/S</th>
+                          <th className="col-highlight-red">Extra Amt</th>
                           <th style={{ background: 'rgba(240, 160, 64, 0.15)' }}>Total Outstanding</th>
                         </tr>
                       </thead>
@@ -2158,6 +2159,7 @@ function ReportsPanel({ onClose }) {
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.invoicePendingCurrentMonth)}</span></td>
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.previousInvoicePending)}</span></td>
                             <td><span className={`amount ${(e.monthlyOutstanding || 0) > 0 ? 'positive' : (e.monthlyOutstanding || 0) < 0 ? 'negative' : ''}`}>{formatCurrency(e.monthlyOutstanding)}</span></td>
+                            <td className="col-highlight-red"><span className={`amount ${(e.extraAmount || 0) !== 0 ? 'negative' : ''}`}>{formatCurrency(e.extraAmount)}</span></td>
                             <td style={{ background: 'rgba(240, 160, 64, 0.08)' }}><span className="amount" style={{ color: 'var(--accent-orange)', fontWeight: 700 }}>{formatCurrency(e.totalOutstanding)}</span></td>
                           </tr>
                         ))}
@@ -2175,6 +2177,7 @@ function ReportsPanel({ onClose }) {
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.invoicePendingCurrentMonth)}</span></td>
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.previousInvoicePending)}</span></td>
                             <td><span className="amount">{formatCurrency(clientReportSummary.monthlyOutstanding)}</span></td>
+                            <td className="col-highlight-red"><span className="amount negative">{formatCurrency(clientReportEntries.reduce((a,x)=>a+(x.extraAmount||0),0))}</span></td>
                             <td style={{ background: 'rgba(240, 160, 64, 0.15)' }}><span className="amount" style={{ color: 'var(--accent-orange)', fontWeight: 700 }}>{formatCurrency(clientReportSummary.totalOutstanding)}</span></td>
                           </tr>
                         )}

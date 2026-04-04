@@ -441,6 +441,15 @@ function BillingForm() {
                 <input type="number" name="previousMonthOutstanding" value={formData.previousMonthOutstanding} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
               </div>
             </div>
+            <div className="input-group">
+              <label>Extra Amount <span style={{color:'#ef4444'}}>*</span></label>
+              <div className="input-prefix"><span>&#8377;</span>
+                <input type="number" name="extraAmount" value={formData.extraAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Enter amount to adjust outstanding (e.g. 500 to reduce, -12 to increase)
+              </span>
+            </div>
             <div className="input-group calculated">
               <label>Invoice Pending (Current Month)</label>
               <div className="input-prefix"><span>&#8377;</span>
