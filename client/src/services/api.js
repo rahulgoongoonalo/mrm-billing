@@ -102,6 +102,8 @@ export const royaltyApi = {
     api.get(`/royalty-accounting/reports/client/${clientId}${financialYear ? `?financialYear=${financialYear}` : ''}`),
   getPreviousOutstanding: (clientId, month, financialYear) =>
     api.get(`/royalty-accounting/previous-outstanding/${clientId}/${month}${financialYear ? `?financialYear=${financialYear}` : ''}`),
+  getPrevFyOutstanding: (financialYear) =>
+    api.get(`/royalty-accounting/reports/prev-fy-outstanding${financialYear ? `?financialYear=${financialYear}` : ''}`),
 };
 
 // Settings API

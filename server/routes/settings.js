@@ -3,7 +3,7 @@ const router = express.Router();
 const Settings = require('../models/Settings');
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
@@ -16,13 +16,13 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const settings = await Settings.find();
-    
+
     // Convert array to object for easier frontend use
     const settingsObj = settings.reduce((acc, setting) => {
       acc[setting.key] = setting.value;
       return acc;
     }, {});
-    
+
     res.json(settingsObj);
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -30,48 +30,17 @@ router.get('/', async (req, res) => {
   }
 });
 
-// @route   GET /api/settings/:key
-// @desc    Get a specific setting
-// @access  Public
-router.get('/:key', async (req, res) => {
-  try {
-    const value = await Settings.getSetting(req.params.key);
-    
-    if (value === null) {
-      return res.status(404).json({ message: 'Setting not found' });
-    }
-    
-    res.json({ key: req.params.key, value });
-  } catch (error) {
-    console.error('Error fetching setting:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// @route   PUT /api/settings/:key
-// @desc    Update a setting
-// @access  Admin
-router.put('/:key', requireRole(['admin']), async (req, res) => {
-  try {
-    const { value, description } = req.body;
-    
-    const setting = await Settings.findOneAndUpdate(
-      { key: req.params.key },
-      { value, description, updatedAt: Date.now() },
-      { upsert: true, new: true }
-    );
-    
-    res.json(setting);
-  } catch (error) {
-    console.error('Error updating setting:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
+// ===========================================================================
+// IMPORTANT: All specific PUT/POST routes MUST be declared BEFORE the generic
+// `/:key` routes below. Express matches routes in the order they are defined,
+// so a generic `/:key` route declared first would swallow requests like
+// `/financial-year` and break the dedicated handler.
+// ===========================================================================
 
 // @route   POST /api/settings/initialize
 // @desc    Initialize default settings
-// @access  Admin
-router.post('/initialize', requireRole(['admin']), async (req, res) => {
+// @access  Authenticated
+router.post('/initialize', async (req, res) => {
   try {
     await Settings.initializeDefaults();
     const settings = await Settings.find();
@@ -84,8 +53,8 @@ router.post('/initialize', requireRole(['admin']), async (req, res) => {
 
 // @route   PUT /api/settings/financial-year
 // @desc    Update financial year
-// @access  Admin
-router.put('/financial-year', requireRole(['admin']), async (req, res) => {
+// @access  Authenticated
+router.put('/financial-year', async (req, res) => {
   try {
     const { startYear } = req.body;
 
@@ -100,49 +69,13 @@ router.put('/financial-year', requireRole(['admin']), async (req, res) => {
 
     await Settings.updateSetting('financialYear', financialYear);
 
-    // Auto-create blank entries for all active clients in the new FY
-    const clients = await Client.find({ isActive: true });
-    let created = 0;
-
-    // Get the previous FY's March entry for each client to carry forward outstanding
-    const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
-
-    for (const client of clients) {
-      // Check if the previous FY's last month (March) has an outstanding to carry forward
-      const marchEntry = await RoyaltyAccounting.findOne({
-        clientId: client.clientId,
-        month: 'mar',
-        year: prevFY.endYear
-      });
-      const carryForward = marchEntry ? marchEntry.totalOutstanding : 0;
-
-      for (let i = 0; i < monthOrder.length; i++) {
-        const month = monthOrder[i];
-        const year = ['jan', 'feb', 'mar'].includes(month)
-          ? financialYear.endYear
-          : financialYear.startYear;
-
-        // Only create if entry doesn't already exist
-        const exists = await RoyaltyAccounting.findOne({ clientId: client.clientId, month, year });
-        if (!exists) {
-          await RoyaltyAccounting.create({
-            clientId: client.clientId,
-            clientName: client.name,
-            month,
-            year,
-            commissionRate: client.commissionRate || 0,
-            gstRate: 18,
-            previousMonthOutstanding: i === 0 ? carryForward : 0
-          });
-          created++;
-        }
-      }
-    }
+    // No auto-seeding. All entries are created on-demand when the user saves data.
+    // The POST route handles carry-forward from previous FY March automatically.
 
     res.json({
-      message: `Financial year updated to FY ${financialYear.startYear}-${financialYear.endYear}. Created ${created} new entries for ${clients.length} clients.`,
+      message: `Financial year switched to FY ${financialYear.startYear}-${financialYear.endYear}.`,
       financialYear,
-      entriesCreated: created
+      entriesCreated: 0
     });
   } catch (error) {
     console.error('Error updating financial year:', error);
@@ -152,8 +85,8 @@ router.put('/financial-year', requireRole(['admin']), async (req, res) => {
 
 // @route   PUT /api/settings/exchange-rate
 // @desc    Update GBP to INR exchange rate
-// @access  Admin
-router.put('/exchange-rate', requireRole(['admin']), async (req, res) => {
+// @access  Authenticated
+router.put('/exchange-rate', async (req, res) => {
   try {
     const { rate } = req.body;
 
@@ -175,8 +108,8 @@ router.put('/exchange-rate', requireRole(['admin']), async (req, res) => {
 
 // @route   PUT /api/settings/usd-exchange-rate
 // @desc    Update USD to INR exchange rate
-// @access  Admin
-router.put('/usd-exchange-rate', requireRole(['admin']), async (req, res) => {
+// @access  Authenticated
+router.put('/usd-exchange-rate', async (req, res) => {
   try {
     const { rate } = req.body;
 
@@ -192,6 +125,48 @@ router.put('/usd-exchange-rate', requireRole(['admin']), async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating USD exchange rate:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ===========================================================================
+// Generic key-based routes — MUST be declared AFTER all specific routes above.
+// ===========================================================================
+
+// @route   GET /api/settings/:key
+// @desc    Get a specific setting
+// @access  Public
+router.get('/:key', async (req, res) => {
+  try {
+    const value = await Settings.getSetting(req.params.key);
+
+    if (value === null) {
+      return res.status(404).json({ message: 'Setting not found' });
+    }
+
+    res.json({ key: req.params.key, value });
+  } catch (error) {
+    console.error('Error fetching setting:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PUT /api/settings/:key
+// @desc    Update a setting
+// @access  Authenticated
+router.put('/:key', async (req, res) => {
+  try {
+    const { value, description } = req.body;
+
+    const setting = await Settings.findOneAndUpdate(
+      { key: req.params.key },
+      { value, description, updatedAt: Date.now() },
+      { upsert: true, new: true }
+    );
+
+    res.json(setting);
+  } catch (error) {
+    console.error('Error updating setting:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

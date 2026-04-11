@@ -283,7 +283,8 @@ export function AppProvider({ children }) {
 
   const deleteEntry = useCallback(async (clientId, month) => {
     try {
-      await royaltyApi.deleteEntry(clientId, month);
+      const fy = state.settings.financialYear?.startYear;
+      await royaltyApi.deleteEntry(clientId, month, fy);
       const key = `${clientId}_${month}`;
       dispatch({ type: ActionTypes.DELETE_ENTRY, payload: key });
       dispatch({ type: ActionTypes.SET_CURRENT_ENTRY, payload: null });
@@ -292,7 +293,7 @@ export function AppProvider({ children }) {
       showToast(error.response?.data?.message || 'Error deleting entry', 'error');
       throw error;
     }
-  }, [showToast]);
+  }, [showToast, state.settings.financialYear]);
 
   // Settings actions
   const updateFinancialYear = useCallback(async (startYear) => {

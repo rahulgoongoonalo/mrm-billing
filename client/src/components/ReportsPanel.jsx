@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { royaltyApi } from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -132,6 +133,14 @@ function ReportsPanel({ onClose }) {
   const { financialYear } = settings;
   const entries = Object.values(billingEntries);
 
+  // Fetch previous FY outstanding from backend (carry-forward from March)
+  const [prevFyOutstanding, setPrevFyOutstanding] = useState(0);
+  useEffect(() => {
+    royaltyApi.getPrevFyOutstanding(financialYear.startYear)
+      .then(res => setPrevFyOutstanding(res.data.totalPrevOutstanding || 0))
+      .catch(() => setPrevFyOutstanding(0));
+  }, [financialYear.startYear]);
+
   const defaultFrom = `${financialYear.startYear}-04-01`;
   const defaultTo = `${financialYear.endYear}-03-31`;
   const [dateFrom, setDateFrom] = useState(defaultFrom);
@@ -245,11 +254,11 @@ function ReportsPanel({ onClose }) {
     const draftCount = src.filter(e => e.status === 'draft').length;
     const submittedCount = src.filter(e => e.status === 'submitted').length;
     const totalCommission = src.reduce((sum, e) => sum + (e.totalCommission || 0), 0);
-    // Previous Year Outstanding = sum of April entries' previousMonthOutstanding (carry-forward from prev FY March)
-    const prevYearOutstanding = src
-      .filter(e => e.month === 'apr')
-      .reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0);
-    // Total Outstanding = sum of each client's latest month outstanding only
+    // Previous Year Outstanding: always use the full prev FY value from API (covers all clients)
+    const prevYearOutstanding = dashboardClient === 'all' ? prevFyOutstanding : (
+      src.filter(e => e.month === 'apr').reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0) || prevFyOutstanding
+    );
+    // Total Outstanding = sum of each client's latest month outstanding + carry-forward for clients without entries
     const latestByClient = {};
     src.forEach(e => {
       const prev = latestByClient[e.clientId];
@@ -257,7 +266,16 @@ function ReportsPanel({ onClose }) {
         latestByClient[e.clientId] = e;
       }
     });
-    const totalOutstanding = Object.values(latestByClient).reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+    const enteredClientsOutstanding = Object.values(latestByClient).reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+    // For clients with entries, their totalOutstanding already includes carry-forward
+    // For clients without entries, their outstanding is still carried from prev FY
+    // Sum of entered clients' April carry-forward (already in their totalOutstanding)
+    const enteredClientsPrevCarry = src
+      .filter(e => e.month === 'apr')
+      .reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0);
+    // Remaining carry-forward from clients without entries in this FY
+    const unentered = prevYearOutstanding - enteredClientsPrevCarry;
+    const totalOutstanding = enteredClientsOutstanding + Math.max(0, unentered);
     const totalIprs = src.reduce((sum, e) => sum + (e.iprsAmount || 0), 0);
     const totalPrs = src.reduce((sum, e) => sum + (e.prsAmount || 0), 0);
     const totalAscap = src.reduce((sum, e) => sum + (e.ascapAmount || 0), 0);
@@ -267,7 +285,7 @@ function ReportsPanel({ onClose }) {
     const totalMlc = src.reduce((sum, e) => sum + (e.mlcAmount || 0), 0);
 
     return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl, totalMlc };
-  }, [clients, entries, dashboardClient]);
+  }, [clients, entries, dashboardClient, prevFyOutstanding]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
 

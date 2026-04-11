@@ -45,11 +45,16 @@ function BillingForm() {
   const monthLabel = `${monthLabels[currentMonth]} ${year}`;
 
   const onSaveDraft = async () => {
-    try { await handleSaveAsDraft(); } catch (error) { showToast(error.message, 'error'); }
+    try { await handleSaveAsDraft(); } catch (error) {
+      // Only show toast for local validation errors (not API errors — AppContext handles those)
+      if (!error.response) showToast(error.message, 'error');
+    }
   };
 
   const onSubmit = async () => {
-    try { await handleSubmit(); } catch (error) { showToast(error.message, 'error'); }
+    try { await handleSubmit(); } catch (error) {
+      if (!error.response) showToast(error.message, 'error');
+    }
   };
 
   const onClear = async () => {

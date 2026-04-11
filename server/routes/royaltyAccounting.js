@@ -96,6 +96,29 @@ router.get('/previous-outstanding/:clientId/:month', async (req, res) => {
   }
 });
 
+// @route   GET /api/royalty-accounting/reports/prev-fy-outstanding
+// @desc    Get total outstanding carried forward from previous FY March
+router.get('/reports/prev-fy-outstanding', async (req, res) => {
+  try {
+    const { financialYear } = req.query;
+    const fy = financialYear
+      ? parseInt(financialYear)
+      : (await Settings.getSetting('financialYear')).startYear;
+
+    // Previous FY March = year fy, month mar (e.g. FY 2026-2027 → March 2026)
+    const marchEntries = await RoyaltyAccounting.find({
+      month: 'mar',
+      year: fy
+    }).select('clientId totalOutstanding');
+
+    const totalPrevOutstanding = marchEntries.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+    res.json({ totalPrevOutstanding, clientCount: marchEntries.length });
+  } catch (error) {
+    console.error('Error fetching prev FY outstanding:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // @route   GET /api/royalty-accounting/:clientId/:month
 // @desc    Get specific entry
 router.get('/:clientId/:month', async (req, res) => {
@@ -126,15 +149,39 @@ router.get('/:clientId/:month', async (req, res) => {
 // @desc    Create or update a royalty accounting entry
 router.post('/', async (req, res) => {
   try {
-    const { clientId, month, ...data } = req.body;
+    const { clientId, month, financialYear: reqFinancialYear, ...data } = req.body;
 
     const client = await Client.findOne({ clientId });
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
     }
 
-    const financialYear = await Settings.getSetting('financialYear');
+    // Use explicitly passed financialYear for year isolation; fall back to Settings
+    const financialYear = reqFinancialYear
+      ? { startYear: parseInt(reqFinancialYear), endYear: parseInt(reqFinancialYear) + 1 }
+      : await Settings.getSetting('financialYear');
     const year = getYearForMonth(month, financialYear);
+
+    // Validation: for FY > 2025-2026, ensure previous FY's March entry EXISTS
+    // and is SUBMITTED before allowing entries in the new FY.
+    if (financialYear.startYear > 2025) {
+      const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
+      const prevMarchEntry = await RoyaltyAccounting.findOne({
+        clientId,
+        month: 'mar',
+        year: prevFY.endYear
+      });
+      if (!prevMarchEntry) {
+        return res.status(400).json({
+          message: `Cannot save entry for FY ${financialYear.startYear}-${financialYear.endYear}. ${client.name} (${clientId}) has no March ${prevFY.endYear} entry. Complete all entries till March in the previous year first.`
+        });
+      }
+      if (prevMarchEntry.status !== 'submitted') {
+        return res.status(400).json({
+          message: `Cannot save entry for FY ${financialYear.startYear}-${financialYear.endYear}. March ${prevFY.endYear} entry for ${client.name} (${clientId}) must be submitted first.`
+        });
+      }
+    }
 
     // Auto-fetch previous month outstanding if not explicitly provided
     let previousMonthOutstanding = data.previousMonthOutstanding || 0;

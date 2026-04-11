@@ -263,6 +263,7 @@ export function useBillingForm() {
   const buildEntryData = useCallback(() => ({
     clientId: selectedClient.clientId,
     month: currentMonth,
+    financialYear: settings.financialYear?.startYear,
     commissionRate: parseFloat(formData.commissionRate) || 0,
     gstRate: parseFloat(formData.gstRate) || 18,
     royaltyType: formData.royaltyType,
@@ -285,7 +286,7 @@ export function useBillingForm() {
     previousMonthReceipt: parseFloat(formData.previousMonthReceipt) || 0,
     previousMonthTds: parseFloat(formData.previousMonthTds) || 0,
     previousMonthOutstanding: parseFloat(formData.previousMonthOutstanding) || 0,
-  }), [selectedClient, currentMonth, formData]);
+  }), [selectedClient, currentMonth, formData, settings.financialYear]);
 
   // Save as draft
   const handleSaveAsDraft = useCallback(async () => {
