@@ -105,14 +105,31 @@ router.get('/reports/prev-fy-outstanding', async (req, res) => {
       ? parseInt(financialYear)
       : (await Settings.getSetting('financialYear')).startYear;
 
-    // Previous FY March = year fy, month mar (e.g. FY 2026-2027 → March 2026)
+    // Primary source: previous FY's March rows (e.g. FY 2026-2027 → March 2026).
     const marchEntries = await RoyaltyAccounting.find({
       month: 'mar',
       year: fy
     }).select('clientId totalOutstanding');
 
-    const totalPrevOutstanding = marchEntries.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
-    res.json({ totalPrevOutstanding, clientCount: marchEntries.length });
+    if (marchEntries.length > 0) {
+      const totalPrevOutstanding = marchEntries.reduce((sum, e) => sum + (e.totalOutstanding || 0), 0);
+      return res.json({ totalPrevOutstanding, clientCount: marchEntries.length });
+    }
+
+    // Fallback: no previous-March rows exist (e.g. oldest FY the system has
+    // data for). Use the opening balance that was typed into April of the
+    // current FY — that's the manually-seeded carry-forward for those clients.
+    const aprilEntries = await RoyaltyAccounting.find({
+      month: 'apr',
+      year: fy
+    }).select('clientId previousMonthOutstanding');
+
+    const totalPrevOutstanding = aprilEntries.reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0);
+    res.json({
+      totalPrevOutstanding,
+      clientCount: aprilEntries.filter(e => (e.previousMonthOutstanding || 0) !== 0).length,
+      source: 'april-opening-balance'
+    });
   } catch (error) {
     console.error('Error fetching prev FY outstanding:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
