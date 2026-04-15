@@ -3,6 +3,30 @@ const Settings = require('../models/Settings');
 const { getTransporter } = require('./emailService');
 
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
+const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+// Absolute calendar ordering — works across fiscal years.
+const calOrder = (e) => (e.year || 0) * 12 + (calMonthIdx[e.month] ?? -1);
+const hasActivity = (e) => {
+  if (e.status === 'submitted') return true;
+  return (
+    (e.iprsAmount || 0) !== 0 ||
+    (e.prsAmount || 0) !== 0 ||
+    (e.soundExchangeAmount || 0) !== 0 ||
+    (e.isamraAmount || 0) !== 0 ||
+    (e.ascapAmount || 0) !== 0 ||
+    (e.pplAmount || 0) !== 0 ||
+    (e.mlcAmount || 0) !== 0 ||
+    (e.extraAmount || 0) !== 0 ||
+    (e.currentMonthGstBase || 0) !== 0 ||
+    (e.previousOutstandingGstBase || 0) !== 0 ||
+    (e.currentMonthReceipt || 0) !== 0 ||
+    (e.currentMonthTds || 0) !== 0 ||
+    (e.previousMonthReceipt || 0) !== 0 ||
+    (e.previousMonthTds || 0) !== 0 ||
+    (e.previousMonthOutstanding || 0) !== 0 ||
+    (e.totalOutstanding || 0) !== 0
+  );
+};
 const monthLabels = {
   apr: 'April', may: 'May', jun: 'June', jul: 'July',
   aug: 'August', sep: 'September', oct: 'October', nov: 'November',
@@ -105,28 +129,29 @@ function buildEmailHtml({ title, subtitle, fyStart, clientRows, grandTotal, acce
 async function sendOutstandingNotification() {
   try {
     const financialYear = await Settings.getSetting('financialYear');
-    const fyStart = financialYear.startYear;
+    const fyStart = financialYear.startYear; // still used only for the email header label
 
-    // Get all entries for current FY
-    const entries = await RoyaltyAccounting.find({
-      $or: [
-        { year: fyStart, month: { $in: ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] } },
-        { year: fyStart + 1, month: { $in: ['jan', 'feb', 'mar'] } }
-      ]
-    }).lean();
+    // Get ALL entries across all fiscal years — we want each client's latest
+    // activity regardless of which FY it lives in.
+    const entries = await RoyaltyAccounting.find({}).lean();
 
     if (entries.length === 0) {
-      console.log('Outstanding Notification: No entries found for current FY, skipping email.');
+      console.log('Outstanding Notification: No entries found, skipping email.');
       return;
     }
 
-    // Find each client's latest month entry
+    // Find each client's latest month entry by absolute calendar date.
+    // Prefer latest entry that has real activity; fall back to blank drafts
+    // only if the client has nothing active.
     const latestByClient = {};
     entries.forEach(e => {
       const prev = latestByClient[e.clientId];
-      if (!prev ||
-          monthOrder.indexOf(e.month) > monthOrder.indexOf(prev.month) ||
-          e.year > prev.year) {
+      const eActive = hasActivity(e);
+      if (!prev) { latestByClient[e.clientId] = e; return; }
+      const prevActive = hasActivity(prev);
+      if (eActive && !prevActive) {
+        latestByClient[e.clientId] = e;
+      } else if (eActive === prevActive && calOrder(e) > calOrder(prev)) {
         latestByClient[e.clientId] = e;
       }
     });

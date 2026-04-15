@@ -153,35 +153,32 @@ router.put('/:id', async (req, res) => {
       );
     }
 
-    // Cascade commission rate change to all RoyaltyAccounting entries (in month order)
+    // Cascade commission rate change to all RoyaltyAccounting entries (in chronological order)
     if (commissionRate !== undefined) {
-      const financialYear = await Settings.getSetting('financialYear');
       const entries = await RoyaltyAccounting.find({ clientId: req.params.id });
 
-      // Sort entries by month order within the financial year
-      entries.sort((a, b) => {
-        const aIdx = monthOrder.indexOf(a.month);
-        const bIdx = monthOrder.indexOf(b.month);
-        return aIdx - bIdx;
-      });
+      // Chronological position: FY-apr = 0..FY-mar = 11.
+      // For a given entry, its FY startYear = (month in jan/feb/mar) ? year-1 : year.
+      const fyStart = (e) => (['jan', 'feb', 'mar'].includes(e.month) ? e.year - 1 : e.year);
+      const chronoKey = (e) => fyStart(e) * 12 + monthOrder.indexOf(e.month);
 
-      // Update commission rate and save in order, cascading previousMonthOutstanding
+      entries.sort((a, b) => chronoKey(a) - chronoKey(b));
+
+      // Update commission rate and save in chronological order, cascading previousMonthOutstanding
+      // across month boundaries AND across FY boundaries (March -> next April).
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         entry.commissionRate = parseFloat(commissionRate);
 
-        // For entries after the first, update previousMonthOutstanding from the previous entry
         if (i > 0) {
           const prevEntry = entries[i - 1];
-          const prevMonthIdx = monthOrder.indexOf(prevEntry.month);
-          const currMonthIdx = monthOrder.indexOf(entry.month);
-          // Only chain if this entry is the next consecutive month
-          if (currMonthIdx === prevMonthIdx + 1) {
+          // Chain only if this entry is the immediate chronological successor.
+          if (chronoKey(entry) === chronoKey(prevEntry) + 1) {
             entry.previousMonthOutstanding = Math.round((prevEntry.totalOutstanding + Number.EPSILON) * 100) / 100;
           }
         }
 
-        await entry.save(); // triggers pre-save hook to recalculate commissions & outstanding
+        await entry.save(); // pre-save hook recomputes commissions & outstanding
       }
     }
 

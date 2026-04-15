@@ -238,7 +238,9 @@ router.post('/', async (req, res) => {
       previousMonthReceipt: data.previousMonthReceipt || 0,
       previousMonthTds: data.previousMonthTds || 0,
       previousMonthOutstanding,
-      status: data.status || 'draft'
+      status: data.status || 'draft',
+      lastEditedByEmail: req.user?.email || '',
+      lastEditedByUserId: req.user?.userId || ''
     };
 
     const entry = await RoyaltyAccounting.findOneAndUpdate(

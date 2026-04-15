@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { royaltyApi } from '../services/api';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -274,8 +275,22 @@ function SettingsModal({ onClose }) {
 
 // View Entries Modal
 function ViewEntriesModal({ onClose }) {
-  const { billingEntries } = useApp();
-  const entries = Object.values(billingEntries);
+  const [allEntries, setAllEntries] = useState(null);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    royaltyApi.getAll()
+      .then((res) => { if (!cancelled) setAllEntries(res.data || []); })
+      .catch((err) => { if (!cancelled) setLoadError(err.response?.data?.message || 'Failed to load entries'); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const entries = (allEntries || []).slice().sort((a, b) => {
+    const at = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const bt = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return bt - at;
+  });
 
   return (
     <div className="modal" style={{ maxWidth: 800 }}>
@@ -289,7 +304,11 @@ function ViewEntriesModal({ onClose }) {
         </button>
       </div>
       <div className="modal-body">
-        {entries.length === 0 ? (
+        {loadError ? (
+          <div className="empty-state"><h3>Failed to load</h3><p>{loadError}</p></div>
+        ) : allEntries === null ? (
+          <div className="empty-state"><h3>Loading…</h3></div>
+        ) : entries.length === 0 ? (
           <div className="empty-state">
             <h3>No Entries Yet</h3>
             <p>Start by selecting a client and entering royalty accounting data</p>
@@ -335,6 +354,17 @@ function ViewEntriesModal({ onClose }) {
                   </span>
                   <span style={{ color: 'var(--text-secondary)' }}>
                     Total O/S: <strong style={{ color: 'var(--accent-blue)' }}>{formatCurrency(entry.totalOutstanding)}</strong>
+                  </span>
+                </div>
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border-color)', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <span>
+                    Created: <strong style={{ color: 'var(--text-primary)' }}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString('en-IN') : '—'}</strong>
+                  </span>
+                  <span>
+                    Last updated: <strong style={{ color: 'var(--text-primary)' }}>{entry.updatedAt ? new Date(entry.updatedAt).toLocaleString('en-IN') : '—'}</strong>
+                  </span>
+                  <span>
+                    By: <strong style={{ color: 'var(--text-primary)' }}>{entry.lastEditedByEmail || '—'}</strong>
                   </span>
                 </div>
               </div>

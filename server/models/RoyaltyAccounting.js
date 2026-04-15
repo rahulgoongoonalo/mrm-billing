@@ -80,7 +80,11 @@ const royaltyAccountingSchema = new mongoose.Schema({
     type: String,
     enum: ['draft', 'submitted'],
     default: 'draft'
-  }
+  },
+
+  // Audit
+  lastEditedByEmail: { type: String, default: '' },
+  lastEditedByUserId: { type: String, default: '' }
 }, {
   timestamps: true
 });

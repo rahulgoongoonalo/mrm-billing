@@ -126,14 +126,11 @@ async function run() {
       console.log(`Current FY (from settings): ${fyStart}-${fyStart + 1}`);
     }
 
-    const entries = await RoyaltyAccounting.find({
-      $or: [
-        { year: fyStart, month: { $in: ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] } },
-        { year: fyStart + 1, month: { $in: ['jan', 'feb', 'mar'] } }
-      ]
-    }).lean();
+    // Query ALL entries across all fiscal years — we want each client's latest
+    // outstanding regardless of the FY they sit in.
+    const entries = await RoyaltyAccounting.find({}).lean();
 
-    console.log(`Found ${entries.length} entries for current FY.`);
+    console.log(`Found ${entries.length} entries across all FYs.`);
 
     if (entries.length === 0) {
       console.log('No entries found, sending empty report anyway for testing.');
@@ -165,8 +162,9 @@ async function run() {
       );
     };
 
-    const fyOrder = (e) =>
-      (e.year - fyStart) * 12 + monthOrder.indexOf(e.month);
+    // Absolute calendar ordering so latest-month picking works across FYs.
+    const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+    const fyOrder = (e) => (e.year || 0) * 12 + (calMonthIdx[e.month] ?? -1);
 
     const latestByClient = {};
     entries.forEach(e => {
