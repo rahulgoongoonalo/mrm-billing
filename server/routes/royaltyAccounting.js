@@ -183,9 +183,29 @@ router.post('/', async (req, res) => {
       }
     }
 
+    const currentMonthIndex = monthOrder.indexOf(month);
+
+    // Validation: within a FY, block saving a month until the previous month
+    // exists AND is submitted. April is exempt — its predecessor is the
+    // previous FY's March, already validated above.
+    if (currentMonthIndex > 0) {
+      const prevMonth = monthOrder[currentMonthIndex - 1];
+      const prevYear = getYearForMonth(prevMonth, financialYear);
+      const prevEntry = await RoyaltyAccounting.findOne({ clientId, month: prevMonth, year: prevYear });
+      if (!prevEntry) {
+        return res.status(400).json({
+          message: `Cannot save ${monthOrder[currentMonthIndex].toUpperCase()} ${year} for ${client.name} (${clientId}). Previous month (${prevMonth.toUpperCase()} ${prevYear}) entry does not exist. Complete it first.`
+        });
+      }
+      if (prevEntry.status !== 'submitted') {
+        return res.status(400).json({
+          message: `Cannot save ${monthOrder[currentMonthIndex].toUpperCase()} ${year} for ${client.name} (${clientId}). Previous month (${prevMonth.toUpperCase()} ${prevYear}) must be submitted first.`
+        });
+      }
+    }
+
     // Auto-fetch previous month outstanding if not explicitly provided
     let previousMonthOutstanding = data.previousMonthOutstanding || 0;
-    const currentMonthIndex = monthOrder.indexOf(month);
     if (!data.previousMonthOutstanding) {
       if (currentMonthIndex === 0) {
         // April: carry forward from previous FY's March
