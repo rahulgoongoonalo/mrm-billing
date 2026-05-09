@@ -28,6 +28,28 @@ const MONTH_NUM = { apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov
 
 const FY_ORDER = { apr: 0, may: 1, jun: 2, jul: 3, aug: 4, sep: 5, oct: 6, nov: 7, dec: 8, jan: 9, feb: 10, mar: 11 };
 
+// Sort entries chronologically across financial years (Apr year N -> Mar year N+1, then Apr year N+1 ...)
+const sortEntriesFy = (arr) => {
+  const fyStart = (e) => (['jan','feb','mar'].includes(e.month) ? e.year - 1 : e.year);
+  return [...(arr || [])].sort((a, b) => {
+    const af = fyStart(a), bf = fyStart(b);
+    if (af !== bf) return af - bf;
+    return FY_ORDER[a.month] - FY_ORDER[b.month];
+  });
+};
+
+// Sort sub-rows by date string (YYYY-MM-DD or parseable); blanks last
+const sortByDate = (rows) => {
+  return [...(rows || [])].sort((a, b) => {
+    const ad = a?.date ? new Date(a.date).getTime() : Infinity;
+    const bd = b?.date ? new Date(b.date).getTime() : Infinity;
+    if (isNaN(ad) && isNaN(bd)) return 0;
+    if (isNaN(ad)) return 1;
+    if (isNaN(bd)) return -1;
+    return ad - bd;
+  });
+};
+
 const getEntryDate = (entry) => {
   const m = MONTH_NUM[entry.month];
   return new Date(entry.year, m - 1, 1);
@@ -123,7 +145,7 @@ const DateRangeFilter = ({ dateFrom, dateTo, setDateFrom, setDateTo, clients, ex
 );
 
 function ReportsPanel({ onClose }) {
-  const { clients, billingEntries, settings, updateClient } = useApp();
+  const { clients, billingEntries, settings, updateClient, showToast } = useApp();
   const [activeReport, setActiveReport] = useState('dashboard');
   const [selectedClientForEdit, setSelectedClientForEdit] = useState(null);
   const [editFormData, setEditFormData] = useState(null);
@@ -141,6 +163,9 @@ function ReportsPanel({ onClose }) {
       .catch(() => setPrevFyOutstanding(0));
   }, [financialYear.startYear]);
 
+  // All-FY entries for the selected client report (cross-FY support)
+  const [allFyClientEntries, setAllFyClientEntries] = useState([]);
+
   const defaultFrom = `${financialYear.startYear}-04-01`;
   const defaultTo = `${financialYear.endYear}-03-31`;
   const [dateFrom, setDateFrom] = useState(defaultFrom);
@@ -153,6 +178,15 @@ function ReportsPanel({ onClose }) {
   const [outstandingSortDesc, setOutstandingSortDesc] = useState(false);
   const [clientReportClient, setClientReportClient] = useState(null);
   const [clientReportSearch, setClientReportSearch] = useState('');
+  // Fetch all-FY entries for the selected client (cross-FY breakdown)
+  useEffect(() => {
+    if (!clientReportClient) { setAllFyClientEntries([]); return; }
+    let cancelled = false;
+    royaltyApi.getAll({ clientId: clientReportClient })
+      .then(res => { if (!cancelled) setAllFyClientEntries(Array.isArray(res.data) ? res.data : []); })
+      .catch(() => { if (!cancelled) setAllFyClientEntries([]); });
+    return () => { cancelled = true; };
+  }, [clientReportClient]);
   const [clientReportDropdownOpen, setClientReportDropdownOpen] = useState(false);
   const clientReportDropdownRef = useRef(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -292,13 +326,48 @@ function ReportsPanel({ onClose }) {
   // Client Report data: all entries for selected client, sorted by FY order
   const clientReportEntries = useMemo(() => {
     if (!clientReportClient) return [];
-    return entries
-      .filter(e => e.clientId === clientReportClient)
-      .sort((a, b) => {
-        if (a.year !== b.year) return a.year - b.year;
-        return FY_ORDER[a.month] - FY_ORDER[b.month];
+    // Merge cross-FY fetched entries with current-FY entries from context (dedupe by month-year)
+    const map = new Map();
+    entries.filter(e => e.clientId === clientReportClient).forEach(e => {
+      map.set(`${e.month}-${e.year}`, e);
+    });
+    allFyClientEntries.filter(e => e.clientId === clientReportClient).forEach(e => {
+      map.set(`${e.month}-${e.year}`, e);
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return FY_ORDER[a.month] - FY_ORDER[b.month];
+    });
+  }, [entries, allFyClientEntries, clientReportClient]);
+
+  // Extended month options for Royalty Breakdown picker: union of existing entries + 5 FYs starting from earliest known FY (or current)
+  const royaltyBreakdownMonthOptions = useMemo(() => {
+    const FY_MONTHS = ['apr','may','jun','jul','aug','sep','oct','nov','dec','jan','feb','mar'];
+    const currentFyStart = settings?.financialYear?.startYear || new Date().getFullYear();
+    // Determine earliest FY-start year from data so older months also show
+    const fyStartOf = (e) => (['jan','feb','mar'].includes(e.month) ? e.year - 1 : e.year);
+    const dataFyStarts = clientReportEntries.map(fyStartOf);
+    const minFyStart = dataFyStarts.length ? Math.min(...dataFyStarts, currentFyStart) : currentFyStart;
+    const maxFyStart = Math.max(currentFyStart + 4, ...(dataFyStarts.length ? dataFyStarts : [currentFyStart]));
+    const map = new Map();
+    clientReportEntries.forEach(e => {
+      const key = `${e.month}-${e.year}`;
+      map.set(key, { month: e.month, year: e.year, hasData: true });
+    });
+    for (let fyStart = minFyStart; fyStart <= maxFyStart; fyStart++) {
+      FY_MONTHS.forEach((m, idx) => {
+        const y = idx < 9 ? fyStart : fyStart + 1;
+        const key = `${m}-${y}`;
+        if (!map.has(key)) map.set(key, { month: m, year: y, hasData: false });
       });
-  }, [entries, clientReportClient]);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const aFy = fyStartOf(a);
+      const bFy = fyStartOf(b);
+      if (aFy !== bFy) return aFy - bFy;
+      return FY_ORDER[a.month] - FY_ORDER[b.month];
+    });
+  }, [clientReportEntries, settings]);
 
   const clientReportSummary = useMemo(() => {
     const e = clientReportEntries;
@@ -519,7 +588,8 @@ function ReportsPanel({ onClose }) {
 
   // ── IPRS Detail PDF Export ──
   const exportIprsPDF = (filteredEntries) => {
-    const entries = filteredEntries || clientReportEntries;
+    const rawEntries = filteredEntries || clientReportEntries;
+    const entries = sortEntriesFy(rawEntries);
     if (!clientReportClient || entries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
@@ -542,7 +612,7 @@ function ReportsPanel({ onClose }) {
     entries.forEach(entry => {
       const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
       if (entry.iprsEntries && entry.iprsEntries.length > 0) {
-        entry.iprsEntries.forEach(row => {
+        sortByDate(entry.iprsEntries).forEach(row => {
           const received = row.receivedAmount || 0;
           const tds = row.tdsDeduction || 0;
           const afterTds = row.afterTdsAmount || (received - tds);
@@ -588,7 +658,8 @@ function ReportsPanel({ onClose }) {
 
   // ── PRS Detail PDF Export ──
   const exportPrsPDF = (filteredEntries) => {
-    const entries = filteredEntries || clientReportEntries;
+    const rawEntries = filteredEntries || clientReportEntries;
+    const entries = sortEntriesFy(rawEntries);
     if (!clientReportClient || entries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
@@ -610,7 +681,7 @@ function ReportsPanel({ onClose }) {
     entries.forEach(entry => {
       const monthLabel = `${monthLabels[entry.month]} ${entry.year}`;
       if (entry.prsEntries && entry.prsEntries.length > 0) {
-        entry.prsEntries.forEach(row => {
+        sortByDate(entry.prsEntries).forEach(row => {
           const gbp = row.receivedGbp || 0;
           const rate = row.gbpToInrRate || 0;
           const inr = row.receivedInr || 0;
@@ -658,9 +729,10 @@ function ReportsPanel({ onClose }) {
 
   // ── Generic Royalty Breakdown Export (PDF / Excel) ──
   const exportRoyaltyBreakdown = (type, format, selectedMonthKeys) => {
-    const filteredEntries = (selectedMonthKeys && selectedMonthKeys.length > 0)
+    const baseEntries = (selectedMonthKeys && selectedMonthKeys.length > 0)
       ? clientReportEntries.filter(e => selectedMonthKeys.includes(`${e.month}-${e.year}`))
       : clientReportEntries;
+    const filteredEntries = sortEntriesFy(baseEntries);
     if (!clientReportClient || filteredEntries.length === 0) return;
     const clientObj = clients.find(c => c.clientId === clientReportClient);
     const clientName = clientObj?.name || clientReportClient;
@@ -678,7 +750,7 @@ function ReportsPanel({ onClose }) {
       filteredEntries.forEach(entry => {
         const ml = `${monthLabels[entry.month]} ${entry.year}`;
         if (entry.iprsEntries && entry.iprsEntries.length > 0) {
-          entry.iprsEntries.forEach(row => {
+          sortByDate(entry.iprsEntries).forEach(row => {
             const received = row.receivedAmount || 0, tds = row.tdsDeduction || 0;
             const afterTds = row.afterTdsAmount || (received - tds), commission = row.commission || 0;
             rows.push([ml, row.date || '—', received, tds, afterTds, commission]);
@@ -706,7 +778,7 @@ function ReportsPanel({ onClose }) {
       filteredEntries.forEach(entry => {
         const ml = `${monthLabels[entry.month]} ${entry.year}`;
         if (entry.prsEntries && entry.prsEntries.length > 0) {
-          entry.prsEntries.forEach(row => {
+          sortByDate(entry.prsEntries).forEach(row => {
             const gbp = row.receivedGbp || 0, rate = row.gbpToInrRate || 0, inr = row.receivedInr || 0, commission = row.commission || 0;
             rows.push([ml, row.date || '—', gbp, rate, inr, commission]);
             grandGbp += gbp; grandInr += inr; grandCommission += commission;
@@ -1735,26 +1807,26 @@ function ReportsPanel({ onClose }) {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Months</label>
                             <div style={{ display: 'flex', gap: 8 }}>
-                              <button type="button" onClick={() => setRoyaltyBreakdownMonths(clientReportEntries.map(e => `${e.month}-${e.year}`))}
+                              <button type="button" onClick={() => setRoyaltyBreakdownMonths(royaltyBreakdownMonthOptions.map(e => `${e.month}-${e.year}`))}
                                 style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>All</button>
                               <button type="button" onClick={() => setRoyaltyBreakdownMonths([])}
                                 style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>None</button>
                             </div>
                           </div>
                           <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 0' }}>
-                            {clientReportEntries.map(entry => {
+                            {royaltyBreakdownMonthOptions.map(entry => {
                               const key = `${entry.month}-${entry.year}`;
-                              const label = `${monthLabels[entry.month]} ${entry.year}`;
-                              const allKeys = clientReportEntries.map(e => `${e.month}-${e.year}`);
-                              const currentSelection = royaltyBreakdownMonths || allKeys;
+                              const label = `${monthLabels[entry.month]} ${entry.year}${entry.hasData ? '' : ' (no data)'}`;
+                              const dataKeys = clientReportEntries.map(e => `${e.month}-${e.year}`);
+                              const currentSelection = royaltyBreakdownMonths || dataKeys;
                               const checked = currentSelection.includes(key);
                               return (
-                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}>
+                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: entry.hasData ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                                   <input
                                     type="checkbox"
                                     checked={checked}
                                     onChange={() => {
-                                      const cur = royaltyBreakdownMonths || allKeys;
+                                      const cur = royaltyBreakdownMonths || dataKeys;
                                       if (cur.includes(key)) {
                                         setRoyaltyBreakdownMonths(cur.filter(k => k !== key));
                                       } else {
@@ -1772,7 +1844,14 @@ function ReportsPanel({ onClose }) {
                           className="btn btn-primary"
                           style={{ width: '100%' }}
                           onClick={() => {
-                            exportRoyaltyBreakdown(royaltyBreakdownType, royaltyBreakdownFormat, royaltyBreakdownMonths);
+                            const dataKeys = new Set(clientReportEntries.map(e => `${e.month}-${e.year}`));
+                            const selected = royaltyBreakdownMonths || Array.from(dataKeys);
+                            const matched = selected.filter(k => dataKeys.has(k));
+                            if (matched.length === 0) {
+                              showToast('Data not found for selected months', 'error');
+                              return;
+                            }
+                            exportRoyaltyBreakdown(royaltyBreakdownType, royaltyBreakdownFormat, matched);
                             setShowRoyaltyBreakdown(false);
                           }}
                         >
