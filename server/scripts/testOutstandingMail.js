@@ -12,19 +12,22 @@ const mongoose = require('mongoose');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const Settings = require('../models/Settings');
 const { getTransporter } = require('../services/emailService');
-const { aggregateOutstanding, buildReportHtml, buildPerClientReportHtml, formatCurrency } = require('../services/outstandingReport');
+const { aggregateOutstanding, buildReportHtml, buildPerClientReportHtml, buildMovementReportHtml, buildStatementReportHtml, formatCurrency } = require('../services/outstandingReport');
 
-const TEST_RECIPIENT = 'rahul.goongoonalo@gmail.com';
+const TEST_RECIPIENT = 'rahul.goongoonalo@gmail.com, accounts@musicrightsmanagementindia.com';
 
 // Format selector (default = matrix, the existing fixed-6-month table):
-//   node scripts/testOutstandingMail.js            -> matrix
-//   node scripts/testOutstandingMail.js cards       -> per-client cards
-//   node scripts/testOutstandingMail.js cards 2026  -> per-client cards, FY label 2026
+//   node scripts/testOutstandingMail.js             -> matrix
+//   node scripts/testOutstandingMail.js cards        -> per-client dynamic table
+//   node scripts/testOutstandingMail.js movement     -> how-it-came-about summary
+//   node scripts/testOutstandingMail.js movement 2026 -> movement, FY label 2026
 const args = process.argv.slice(2);
-const format = (args.find(a => ['cards', 'perclient', 'matrix'].includes(a.toLowerCase())) || 'matrix').toLowerCase();
-const isCards = format === 'cards' || format === 'perclient';
-const renderReport = isCards ? buildPerClientReportHtml : buildReportHtml;
-const formatTag = isCards ? 'CARDS' : 'MATRIX';
+const format = (args.find(a => ['cards', 'perclient', 'matrix', 'movement', 'statement'].includes(a.toLowerCase())) || 'matrix').toLowerCase();
+const renderReport = format === 'statement' ? buildStatementReportHtml
+  : format === 'movement' ? buildMovementReportHtml
+  : (format === 'cards' || format === 'perclient') ? buildPerClientReportHtml
+  : buildReportHtml;
+const formatTag = format.toUpperCase();
 
 async function run() {
   try {
