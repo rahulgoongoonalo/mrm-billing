@@ -4,18 +4,24 @@ let transporter = null;
 
 const getTransporter = () => {
   if (!transporter) {
+    // Port hardcoded to 465 (implicit TLS), NOT read from env: some hosts block
+    // outbound 587, so we pin the SSL port to avoid relying on a server env var.
     transporter = nodemailer.createTransport({
       service: 'gmail',
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: 465,
+      secure: true, // 465 = implicit TLS
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
       },
       tls: {
         rejectUnauthorized: false
-      }
+      },
+      // Fail fast instead of hanging ~2 min when outbound SMTP is blocked.
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000
     });
   }
   return transporter;
