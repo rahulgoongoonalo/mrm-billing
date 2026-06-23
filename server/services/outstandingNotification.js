@@ -1,7 +1,7 @@
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const Settings = require('../models/Settings');
 const { getTransporter } = require('./emailService');
-const { aggregateOutstanding, buildReportHtml, formatCurrency } = require('./outstandingReport');
+const { aggregateOutstanding, buildPerClientReportHtml, formatCurrency } = require('./outstandingReport');
 
 const recipients = 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com';
 
@@ -28,7 +28,7 @@ async function sendOutstandingNotification() {
     const dateStr = new Date().toLocaleDateString('en-IN');
 
     // --- MAIL 1: Positive Outstanding (greater than 0) ---
-    const positiveHtml = buildReportHtml({
+    const positiveHtml = buildPerClientReportHtml({
       title: 'Outstanding Report - Receivables',
       subtitle: 'Clients with outstanding amount greater than zero, sorted from highest to lowest.',
       fyStart,
@@ -50,7 +50,7 @@ async function sendOutstandingNotification() {
     console.log(`Mail 1 (Positive Outstanding) sent: ${positiveClients.length} clients, total ${formatCurrency(positiveTotal)}`);
 
     // --- MAIL 2: Zero & Negative Outstanding ---
-    const zeroNegativeHtml = buildReportHtml({
+    const zeroNegativeHtml = buildPerClientReportHtml({
       title: 'Outstanding Report - Cleared & Overpaid',
       subtitle: 'Clients with zero or negative outstanding balance (overpaid / advance).',
       fyStart,

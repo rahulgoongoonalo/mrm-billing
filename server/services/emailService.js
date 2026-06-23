@@ -1,16 +1,16 @@
 const nodemailer = require('nodemailer');
 
-let transporter = null;
+let smtpTransporter = null;
 
-const getTransporter = () => {
-  if (!transporter) {
-    // Port hardcoded to 465 (implicit TLS), NOT read from env: some hosts block
-    // outbound 587, so we pin the SSL port to avoid relying on a server env var.
-    transporter = nodemailer.createTransport({
+// SMTP transport (Gmail) — used locally / as a fallback when BREVO_API_KEY is
+// not set. Pinned to 465 (implicit TLS) since some hosts block outbound 587.
+const getSmtpTransporter = () => {
+  if (!smtpTransporter) {
+    smtpTransporter = nodemailer.createTransport({
       service: 'gmail',
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: 465,
-      secure: true, // 465 = implicit TLS
+      secure: true,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
@@ -18,13 +18,61 @@ const getTransporter = () => {
       tls: {
         rejectUnauthorized: false
       },
-      // Fail fast instead of hanging ~2 min when outbound SMTP is blocked.
       connectionTimeout: 15000,
       greetingTimeout: 10000,
       socketTimeout: 20000
     });
   }
-  return transporter;
+  return smtpTransporter;
+};
+
+// "MRM Billing <a@b.com>" -> { name: 'MRM Billing', email: 'a@b.com' }
+function parseSender(from) {
+  const m = /^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/.exec(from || '');
+  if (m && m[2]) return { name: m[1] || undefined, email: m[2].trim() };
+  return { email: (from || '').trim() };
+}
+
+// "a@x.com, b@y.com" -> [{ email: 'a@x.com' }, { email: 'b@y.com' }]
+function parseRecipients(to) {
+  return String(to || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(email => ({ email }));
+}
+
+// Send via Brevo's transactional HTTP API (port 443) — bypasses hosts that
+// block outbound SMTP. Same call signature as nodemailer's sendMail.
+async function brevoSendMail({ from, to, subject, html }) {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+      'accept': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: parseSender(from || process.env.EMAIL_FROM),
+      to: parseRecipients(to),
+      subject,
+      htmlContent: html
+    })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Brevo API ${res.status}: ${body}`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+// Drop-in transporter: Brevo HTTP API when BREVO_API_KEY is set, else SMTP.
+// Both expose sendMail({ from, to, subject, html }) so call sites don't change.
+const getTransporter = () => {
+  if (process.env.BREVO_API_KEY) {
+    return { sendMail: brevoSendMail };
+  }
+  return getSmtpTransporter();
 };
 
 const sendVerificationEmail = async (email, token, name) => {

@@ -101,12 +101,12 @@ app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await initializeApp();
 
-  // Schedule daily outstanding email at 11:35 AM IST
-  cron.schedule('35 11 * * *', () => {
+  // Schedule daily outstanding email at 1:05 PM IST
+  cron.schedule('5 13 * * *', () => {
     console.log('Running daily outstanding notification...');
     sendOutstandingNotification();
   }, { timezone: 'Asia/Kolkata' });
-  console.log('Outstanding notification scheduled daily at 11:35 AM IST');
+  console.log('Outstanding notification scheduled daily at 1:05 PM IST');
 });
 
 module.exports = app;
