@@ -10,6 +10,7 @@ import Toast from './components/Toast';
 import Modals from './components/Modals';
 import ReportsPanel from './components/ReportsPanel';
 import AuthModal from './components/AuthModal';
+import Footer from './components/Footer';
 import './styles/App.css';
 
 function AuthenticatedApp() {
@@ -27,6 +28,7 @@ function AuthenticatedApp() {
         </div>
         <Toast />
         <Modals />
+        <Footer />
       </div>
       {activeModal === 'reports' && <ReportsPanel onClose={closeModal} />}
     </>
@@ -48,7 +50,12 @@ function AppContent() {
 
   // Show auth modal if not authenticated
   if (!isAuthenticated) {
-    return <AuthModal />;
+    return (
+      <>
+        <AuthModal />
+        <Footer variant="floating" />
+      </>
+    );
   }
 
   // Only load AppProvider after authentication

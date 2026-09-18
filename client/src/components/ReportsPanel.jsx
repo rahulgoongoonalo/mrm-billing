@@ -4,6 +4,7 @@ import { royaltyApi } from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Footer from './Footer';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -1503,6 +1504,8 @@ function ReportsPanel({ onClose }) {
             </button>
           ))}
         </div>
+
+        <Footer variant="sidebar" />
       </div>
 
       <div className="reports-main">

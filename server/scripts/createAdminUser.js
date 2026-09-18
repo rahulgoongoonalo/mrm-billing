@@ -37,6 +37,14 @@ const users = [
     role: 'admin',
     isVerified: true,
     isActive: true
+  },
+  {
+    email: 'ayan@goongoonalo.com',
+    password: 'Ayan@2026',
+    name: 'Ayan',
+    role: 'user',
+    isVerified: true,
+    isActive: true
   }
 ];
 

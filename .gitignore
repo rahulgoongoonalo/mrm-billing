@@ -21,3 +21,6 @@ client/.env
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated client statements (contain live client financial data)
+docs/

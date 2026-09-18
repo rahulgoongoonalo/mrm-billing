@@ -129,7 +129,7 @@ function BillingForm() {
             </div>
             <div>
               <div className="section-title">Configurable Rates</div>
-              <div className="section-subtitle">Commission rate and GST rate set during client creation</div>
+              <div className="section-subtitle">Commission rate, GST rate and royalty type come from the client record</div>
             </div>
           </div>
           <div className="input-grid">
@@ -157,15 +157,14 @@ function BillingForm() {
                 />
               </div>
             </div>
-            <div className="input-group">
+            <div className="input-group calculated">
               <label>Royalty Type</label>
               <input
                 type="text"
                 name="royaltyType"
                 value={formData.royaltyType}
-                onChange={handleInputChange}
-                placeholder="IPRS + PRS"
-                disabled={isReadOnly}
+                readOnly
+                title="Set on the client record - edit it under Reports - Client Master"
               />
             </div>
           </div>

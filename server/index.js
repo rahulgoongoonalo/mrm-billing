@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const royaltyAccountingRoutes = require('./routes/royaltyAccounting');
 const settingsRoutes = require('./routes/settings');
+const statementRoutes = require('./routes/statements');
 
 // Import models for initialization
 const Settings = require('./models/Settings');
@@ -43,6 +44,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/royalty-accounting', royaltyAccountingRoutes);
 app.use('/api/settings', settingsRoutes);
+
+// Public statement pages linked from the outstanding email (HMAC-guarded, no JWT)
+app.use('/statements', statementRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

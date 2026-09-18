@@ -131,6 +131,7 @@ router.put('/:id', async (req, res) => {
 
     // Update fields
     const oldName = client.name;
+    const oldType = client.type;
     if (name) client.name = name;
     if (type) client.type = type;
     if (clientType !== undefined) client.clientType = clientType;
@@ -150,6 +151,15 @@ router.put('/:id', async (req, res) => {
       await RoyaltyAccounting.updateMany(
         { clientId: req.params.id },
         { $set: { clientName: name } }
+      );
+    }
+
+    // Cascade royalty type change to all RoyaltyAccounting entries - the client
+    // record owns this field, the monthly entries only mirror it.
+    if (type && type !== oldType) {
+      await RoyaltyAccounting.updateMany(
+        { clientId: req.params.id },
+        { $set: { royaltyType: type } }
       );
     }
 

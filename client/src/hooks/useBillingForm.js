@@ -6,7 +6,7 @@ const initialFormState = {
   // Configurable Rates
   commissionRate: '',
   gstRate: '18',
-  royaltyType: 'IPRS + PRS',
+  royaltyType: '',
 
   // Royalty Amounts
   iprsAmount: '',
@@ -48,7 +48,7 @@ export function useBillingForm() {
       setFormData({
         commissionRate: currentEntry.commissionRate ?? '',
         gstRate: currentEntry.gstRate ?? '18',
-        royaltyType: currentEntry.royaltyType || 'IPRS + PRS',
+        royaltyType: selectedClient?.type || currentEntry.royaltyType || '',
         iprsAmount: currentEntry.iprsAmount || '',
         iprsEntries: currentEntry.iprsEntries || [],
         prsGbp: currentEntry.prsGbp || '',
@@ -79,6 +79,7 @@ export function useBillingForm() {
         ...initialFormState,
         commissionRate: clientRate || '',
         gstRate: clientGstRate,
+        royaltyType: selectedClient?.type || '',
       });
       setIsDirty(false);
       setIsReadOnly(false);

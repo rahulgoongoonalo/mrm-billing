@@ -254,7 +254,9 @@ router.post('/', async (req, res) => {
       clientName: client.name,
       month,
       year,
-      royaltyType: data.royaltyType || 'IPRS + PRS',
+      // Royalty type is owned by the client record, not the entry form.
+      // Whatever the form sends is ignored so the two can never drift apart.
+      royaltyType: client.type || data.royaltyType || '',
       commissionRate: data.commissionRate ?? 0,
       gstRate: data.gstRate ?? 18,
       iprsAmount: data.iprsAmount || 0,
