@@ -16,6 +16,7 @@ const Settings = require('./models/Settings');
 
 // Import notification service
 const { sendOutstandingNotification } = require('./services/outstandingNotification');
+const { sendLowRoyaltyReport } = require('./services/lowRoyaltyNotification');
 
 const app = express();
 
@@ -111,6 +112,13 @@ app.listen(PORT, async () => {
     sendOutstandingNotification();
   }, { timezone: 'Asia/Kolkata' });
   console.log('Outstanding notification scheduled daily at 7:00 PM IST');
+
+  // Low Royalty Report — monthly, on the 19th at 9:00 AM IST
+  cron.schedule('0 9 19 * *', () => {
+    console.log('Running monthly Low Royalty Report...');
+    sendLowRoyaltyReport();
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('Low Royalty Report scheduled monthly on the 19th at 9:00 AM IST');
 });
 
 module.exports = app;
