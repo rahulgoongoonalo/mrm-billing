@@ -115,9 +115,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, [state.accessToken]);
 
+  // The sign-in form tracks its own busy state. Setting the app-wide loading
+  // flag here would swap the form for the full-screen spinner and wipe what the
+  // user typed, along with any error message.
   const login = async (email, password) => {
     try {
-      dispatch({ type: 'SET_LOADING', payload: true });
       const res = await authApi.login({ email, password });
 
       localStorage.setItem('accessToken', res.data.accessToken);
@@ -130,8 +132,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (error) {
       const message = error.response?.data?.message || 'Login failed';
-      dispatch({ type: 'SET_ERROR', payload: message });
-      return { success: false, error: message };
+      return { success: false, error: message, status: error.response?.status ?? 0 };
     }
   };
 
@@ -183,7 +184,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: res.data.message, resetUrl: res.data.resetUrl };
     } catch (error) {
       const message = error.response?.data?.message || 'Request failed';
-      return { success: false, error: message };
+      return { success: false, error: message, status: error.response?.status ?? 0 };
     }
   };
 
@@ -193,7 +194,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: res.data.message };
     } catch (error) {
       const message = error.response?.data?.message || 'Password reset failed';
-      return { success: false, error: message };
+      return { success: false, error: message, status: error.response?.status ?? 0 };
     }
   };
 

@@ -205,19 +205,18 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { permanent } = req.query;
-    
-    // Delete all billing entries for this client
-    await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
 
     if (permanent === 'true') {
-      // Permanent delete
+      // Permanent delete - the client and every entry it owns are removed for good
       const result = await Client.findOneAndDelete({ clientId: req.params.id });
       if (!result) {
         return res.status(404).json({ message: 'Client not found' });
       }
+      await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
       res.json({ message: 'Client permanently deleted' });
     } else {
-      // Soft delete
+      // Soft delete - hide the client but keep its entries, so the removal
+      // can be reversed by setting isActive back to true
       const client = await Client.findOne({ clientId: req.params.id });
       if (!client) {
         return res.status(404).json({ message: 'Client not found' });

@@ -12,7 +12,7 @@ function Footer({ variant = 'inline' }) {
   return (
     <footer className={`app-footer app-footer--${variant}`}>
       <p>
-        Developed and maintained by <span className="rdj">RDJ</span>
+        Developed and maintained by <span className="rdj">RDJ(MRM)</span>
         <span className="app-footer-sep">&middot;</span>
         <span className="app-footer-version">v{APP_VERSION}</span>
       </p>

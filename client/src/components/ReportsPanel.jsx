@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Footer from './Footer';
+import WhatsappReport from './WhatsappReport';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -1458,6 +1459,7 @@ function ReportsPanel({ onClose }) {
     { id: 'gst-invoice', label: 'GST & Invoice', icon: 'file-text' },
     { id: 'receipts-tds', label: 'Receipts & TDS', icon: 'credit-card' },
     { id: 'outstanding', label: 'Outstanding', icon: 'alert' },
+    { id: 'whatsapp', label: 'Whatsapp Report', icon: 'message' },
     { id: 'society-contracts', label: 'Society Contracts', icon: 'briefcase' },
   ];
 
@@ -1499,6 +1501,7 @@ function ReportsPanel({ onClose }) {
                 {item.icon === 'credit-card' && <><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></>}
                 {item.icon === 'clipboard' && <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></>}
                 {item.icon === 'briefcase' && <><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></>}
+                {item.icon === 'message' && <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>}
               </svg>
               <span>{item.label}</span>
             </button>
@@ -2653,6 +2656,8 @@ function ReportsPanel({ onClose }) {
         )}
 
         {/* GST & Invoice Report */}
+        {activeReport === 'whatsapp' && <WhatsappReport />}
+
         {activeReport === 'gst-invoice' && (
           <div className="report-section active">
             <div className="report-page-header">

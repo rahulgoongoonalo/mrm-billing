@@ -76,6 +76,18 @@ function pickWindow(rows) {
   return { start: Math.max(0, last - 11), why: 'no payment has ever been recorded, so the last 12 months are shown' };
 }
 
+// Royalty received. These never move the balance - only the commission on them
+// does - so they are reported in their own column, never as an Account line.
+const ROYALTY_SPLIT = [
+  ['iprsAmount', 'IPRS'],
+  ['prsAmount', 'PRS'],
+  ['soundExchangeAmount', 'Sound Exchange'],
+  ['isamraAmount', 'ISAMRA'],
+  ['ascapAmount', 'ASCAP'],
+  ['pplAmount', 'PPL'],
+  ['mlcAmount', 'MLC'],
+];
+
 const COMMISSION_SPLIT = [
   ['iprsCommission', 'IPRS commission'],
   ['prsCommission', 'PRS commission'],
@@ -91,19 +103,45 @@ const COMMISSION_SPLIT = [
  * Adjustment entries are never listed, but they are still applied to the
  * running balance so each month's total matches what the app stores.
  */
-function buildStatement(client, allRows, mode = 'window') {
+function buildStatement(client, allRows, opts = 'window') {
+  const o = typeof opts === 'string' ? { mode: opts } : (opts || {});
+  const mode = o.mode || 'window';
   const rows = [...allRows].sort((a, b) => calOrder(a) - calOrder(b));
   if (!rows.length) return null;
 
-  const { start, why } = mode === 'full'
-    ? { start: 0, why: 'complete record — every month held for this client' }
-    : pickWindow(rows);
+  let start;
+  let end = rows.length - 1;
+  let why;
+
+  if (mode === 'full') {
+    start = 0;
+    why = 'complete record — every month held for this client';
+  } else if (mode === 'period' || mode === 'year') {
+    const yr = parseInt(o.year, 10);
+    const bounds = mode === 'year'
+      ? { from: yr * 12 + 3, to: (yr + 1) * 12 + 2 }
+      : { from: orderFromDate(o.from), to: orderFromDate(o.to) };
+    if (bounds.from == null || bounds.to == null || Number.isNaN(bounds.from) || Number.isNaN(bounds.to)) return null;
+    const lo = Math.min(bounds.from, bounds.to);
+    const hi = Math.max(bounds.from, bounds.to);
+    start = rows.findIndex((e) => calOrder(e) >= lo);
+    end = -1;
+    for (let i = rows.length - 1; i >= 0; i--) { if (calOrder(rows[i]) <= hi) { end = i; break; } }
+    if (start === -1 || end < start) {
+      return { empty: true, mode, clientId: client.clientId, clientName: client.name, clientType: client.type || '' };
+    }
+    why = mode === 'year'
+      ? `financial year ${yr}-${yr + 1}`
+      : 'the period you selected';
+  } else {
+    ({ start, why } = pickWindow(rows));
+  }
 
   const openedFrom = start > 0 ? longLabel(rows[start - 1]) : null;
   let bal = start > 0 ? n(rows[start], 'previousMonthOutstanding') : (client.previousBalance || 0);
   const openingBalance = bal;
 
-  const window = rows.slice(start);
+  const window = rows.slice(start, end + 1);
   const lines = [];
   let hiddenAdjustments = 0;
 
@@ -131,15 +169,25 @@ function buildStatement(client, allRows, mode = 'window') {
     const extra = n(e, 'extraAmount');
     if (extra) { bal = r2(bal - extra); hiddenAdjustments++; }
 
+    const royalty = ROYALTY_SPLIT
+      .filter(([field]) => n(e, field))
+      .map(([field, label]) => ({ label, amount: n(e, field) }));
+
     lines.push({
       month: shortLabel(e),
       monthLong: longLabel(e),
+      royalty,
+      royaltyTotal: r2(royalty.reduce((t, x) => t + x.amount, 0)),
+      commission: n(e, 'totalCommission'),
       items,
       total: bal,
       stored: n(e, 'totalOutstanding'),
       reconciles: Math.abs(bal - n(e, 'totalOutstanding')) < 0.005,
     });
   }
+
+  const royaltyTotal = r2(lines.reduce((t, l) => t + l.royaltyTotal, 0));
+  const commissionTotal = r2(lines.reduce((t, l) => t + l.commission, 0));
 
   return {
     clientId: client.clientId,
@@ -154,11 +202,19 @@ function buildStatement(client, allRows, mode = 'window') {
     periodFrom: longLabel(window[0]),
     periodTo: longLabel(window[window.length - 1]),
     lines,
+    royaltyTotal,
+    commissionTotal,
     closing: bal,
     hiddenAdjustments,
     monthsShown: window.length,
     monthsHeld: rows.length,
   };
+}
+
+function orderFromDate(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getFullYear() * 12 + d.getMonth();
 }
 
 // Short HMAC so statement links are not enumerable by client id alone.
@@ -174,8 +230,15 @@ function verifyStatementToken(clientId, token) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// Where the statement links in the daily email should point. SERVER_URL wins;
+// otherwise a deployed server falls back to the live API host so the links in
+// that email are never left pointing at localhost.
+const PRODUCTION_SERVER_URL = 'https://billing-b.musicrightsmanagement.in';
+
 function serverUrl() {
-  return (process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5001}`).replace(/\/$/, '');
+  if (process.env.SERVER_URL) return process.env.SERVER_URL.replace(/\/$/, '');
+  if (process.env.NODE_ENV === 'production') return PRODUCTION_SERVER_URL;
+  return `http://localhost:${process.env.PORT || 5001}`;
 }
 
 const statementUrl = (clientId, mode) =>

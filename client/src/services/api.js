@@ -24,6 +24,25 @@ api.interceptors.request.use(
   }
 );
 
+// Endpoints that are called while signed out. A 401 from these means "wrong
+// credentials" or "bad link", never "session expired", so they must reach the
+// caller untouched instead of triggering a token refresh and a page reload.
+const PUBLIC_AUTH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+const isPublicAuthRequest = (url = '') => PUBLIC_AUTH_PATHS.some((p) => url.includes(p));
+
+// Signing out on an expired session removes only our own keys.
+const clearSession = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+};
+
 // Response interceptor
 api.interceptors.response.use(
   (response) => response,
@@ -34,7 +53,8 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/refresh-token')
+      !originalRequest.url?.includes('/auth/refresh-token') &&
+      !isPublicAuthRequest(originalRequest.url)
     ) {
       originalRequest._retry = true;
 
@@ -52,8 +72,8 @@ api.interceptors.response.use(
 
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, clear storage and reload
-        localStorage.clear();
+        // Refresh failed, clear the session and reload
+        clearSession();
         window.location.href = '/';
         return Promise.reject(refreshError);
       }
@@ -61,7 +81,7 @@ api.interceptors.response.use(
 
     // For refresh token failures or other errors, just clear and reload
     if (error.response?.status === 401 && originalRequest.url?.includes('/auth/refresh-token')) {
-      localStorage.clear();
+      clearSession();
       window.location.href = '/';
     }
 
@@ -100,6 +120,14 @@ export const royaltyApi = {
   },
   getClientReport: (clientId, financialYear) =>
     api.get(`/royalty-accounting/reports/client/${clientId}${financialYear ? `?financialYear=${financialYear}` : ''}`),
+  // Per-client royalty / commission / outstanding, same shape the daily email uses.
+  // mode: 'latest' | 'period' | 'year'
+  getOutstandingSummary: ({ mode = 'latest', from, to, year } = {}) => {
+    const params = new URLSearchParams({ mode });
+    if (mode === 'period') { params.set('from', from); params.set('to', to); }
+    if (mode === 'year') params.set('year', year);
+    return api.get(`/royalty-accounting/reports/outstanding-summary?${params.toString()}`);
+  },
   getPreviousOutstanding: (clientId, month, financialYear) =>
     api.get(`/royalty-accounting/previous-outstanding/${clientId}/${month}${financialYear ? `?financialYear=${financialYear}` : ''}`),
   getPrevFyOutstanding: (financialYear) =>

@@ -1,9 +1,8 @@
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const Client = require('../models/Client');
 const { getTransporter } = require('./emailService');
-const {
-  summariseLatest, newClientsThisMonth, buildOutstandingMailHtml, formatCurrency,
-} = require('./outstandingMail');
+const { newClientsThisMonth, buildOutstandingMailHtml, formatCurrency } = require('./outstandingMail');
+const { summarise } = require('./outstandingSummary');
 
 const recipients = 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com';
 
@@ -13,15 +12,22 @@ const recipients = 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementin
  */
 async function collectOutstanding() {
   // Every entry across all financial years - each client's latest month wins.
-  const entries = await RoyaltyAccounting.find({}).lean();
-  const clients = await Client.find({}).lean();
+  const clients = await Client.find({ isActive: { $ne: false } }).lean();
+  const active = new Set(clients.map((c) => c.clientId));
+  const entries = (await RoyaltyAccounting.find({}).lean()).filter((e) => active.has(e.clientId));
 
-  const rows = summariseLatest(entries, clients);
+  const summary = summarise(entries, clients, { mode: 'latest' });
   const newClients = newClientsThisMonth(clients);
-  const totalReceivable = rows.reduce((s, r) => s + (r.outstanding > 0 ? r.outstanding : 0), 0);
-  const owing = rows.filter((r) => r.outstanding > 0).length;
 
-  return { entries, clients, rows, newClients, totalReceivable, owing };
+  return {
+    entries,
+    clients,
+    rows: summary.rows,
+    totals: summary.totals,
+    newClients,
+    totalReceivable: summary.totals.receivable,
+    owing: summary.owing,
+  };
 }
 
 async function sendOutstandingNotification() {
