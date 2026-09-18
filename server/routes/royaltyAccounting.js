@@ -4,6 +4,10 @@ const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const Client = require('../models/Client');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
+const { excludeInactive } = require('../services/activeClients');
+const { summarise } = require('../services/outstandingSummary');
+const { statementUrl, statementToken, serverUrl } = require('../services/statementBuilder');
+const { newClientsThisMonth } = require('../services/outstandingMail');
 
 router.use(authenticateToken);
 
@@ -38,6 +42,8 @@ router.get('/', async (req, res) => {
       // Remove individual year filter if FY is set
       delete query.year;
     }
+
+    if (!query.clientId) Object.assign(query, await excludeInactive());
 
     const entries = await RoyaltyAccounting.find(query);
     entries.sort((a, b) => {
@@ -106,9 +112,11 @@ router.get('/reports/prev-fy-outstanding', async (req, res) => {
       : (await Settings.getSetting('financialYear')).startYear;
 
     // Primary source: previous FY's March rows (e.g. FY 2026-2027 → March 2026).
+    const activeOnly = await excludeInactive();
     const marchEntries = await RoyaltyAccounting.find({
       month: 'mar',
-      year: fy
+      year: fy,
+      ...activeOnly
     }).select('clientId totalOutstanding');
 
     if (marchEntries.length > 0) {
@@ -121,7 +129,8 @@ router.get('/reports/prev-fy-outstanding', async (req, res) => {
     // current FY — that's the manually-seeded carry-forward for those clients.
     const aprilEntries = await RoyaltyAccounting.find({
       month: 'apr',
-      year: fy
+      year: fy,
+      ...activeOnly
     }).select('clientId previousMonthOutstanding');
 
     const totalPrevOutstanding = aprilEntries.reduce((sum, e) => sum + (e.previousMonthOutstanding || 0), 0);
@@ -132,6 +141,57 @@ router.get('/reports/prev-fy-outstanding', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching prev FY outstanding:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   GET /api/royalty-accounting/reports/outstanding-summary
+// @desc    Per-client royalty, commission and outstanding for the daily report /
+//          Whatsapp Report. mode = latest | period | year.
+// NOTE: must stay ABOVE the '/:clientId/:month' route or Express matches that first.
+router.get('/reports/outstanding-summary', async (req, res) => {
+  try {
+    const { mode = 'latest', from, to, year } = req.query;
+
+    if (mode === 'period' && (!from || !to)) {
+      return res.status(400).json({ message: 'A period report needs both a from and a to date.' });
+    }
+    if (mode === 'year' && !year) {
+      return res.status(400).json({ message: 'A year report needs a financial year.' });
+    }
+
+    const clients = await Client.find({ isActive: { $ne: false } })
+      .select('clientId name type commissionRate createdAt').lean();
+    const activeIds = new Set(clients.map((c) => c.clientId));
+    const entries = (await RoyaltyAccounting.find({}).lean()).filter((e) => activeIds.has(e.clientId));
+
+    const summary = summarise(entries, clients, { mode, from, to, year });
+
+    // Statement links are HMAC-signed, so only the server can build them.
+    const base = serverUrl();
+    summary.rows = summary.rows.map((r) => ({
+      ...r,
+      statementUrl: statementUrl(r.clientId, 'outstanding'),
+      fullRecordUrl: statementUrl(r.clientId, 'full'),
+      // base + token let the client build the period / year variants too
+      statementBase: `${base}/statements/${encodeURIComponent(r.clientId)}`,
+      statementToken: statementToken(r.clientId),
+    }));
+
+    const now = new Date();
+    summary.newClients = newClientsThisMonth(clients, now).map((c) => ({
+      clientId: c.clientId,
+      name: c.name,
+      type: c.type || '',
+      commissionRate: c.commissionRate,
+      createdAt: c.createdAt,
+    }));
+    summary.monthLabel = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    summary.dateLabel = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error building outstanding summary:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
@@ -399,7 +459,8 @@ router.get('/reports/gst-invoice', async (req, res) => {
       $or: [
         { year: fy, month: { $in: ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] } },
         { year: fy + 1, month: { $in: ['jan', 'feb', 'mar'] } }
-      ]
+      ],
+      ...(await excludeInactive())
     };
 
     const entries = await RoyaltyAccounting.find(matchQuery)
@@ -451,7 +512,8 @@ router.get('/reports/receipts-tds', async (req, res) => {
       $or: [
         { year: fy, month: { $in: ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] } },
         { year: fy + 1, month: { $in: ['jan', 'feb', 'mar'] } }
-      ]
+      ],
+      ...(await excludeInactive())
     };
 
     const entries = await RoyaltyAccounting.find(matchQuery)
@@ -502,7 +564,8 @@ router.get('/reports/summary', async (req, res) => {
       $or: [
         { year: fy, month: { $in: ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] } },
         { year: fy + 1, month: { $in: ['jan', 'feb', 'mar'] } }
-      ]
+      ],
+      ...(await excludeInactive())
     };
 
     const summary = await RoyaltyAccounting.aggregate([

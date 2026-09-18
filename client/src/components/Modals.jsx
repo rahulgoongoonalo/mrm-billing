@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
 
@@ -147,9 +147,20 @@ function AddClientModal({ onClose }) {
 function RemoveClientModal({ onClose }) {
   const { clients, removeClient } = useApp();
   const [loading, setLoading] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const handleRemove = async (clientId) => {
-    if (window.confirm('Are you sure you want to remove this client?')) {
+  const filteredClients = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return clients;
+    return clients.filter(client =>
+      (client.name || '').toLowerCase().includes(term) ||
+      (client.clientId || '').toLowerCase().includes(term) ||
+      (client.type || '').toLowerCase().includes(term)
+    );
+  }, [clients, searchTerm]);
+
+  const handleRemove = async (clientId, name) => {
+    if (window.confirm(`Remove ${name} (${clientId})?`)) {
       setLoading(clientId);
       try {
         await removeClient(clientId);
@@ -178,8 +189,32 @@ function RemoveClientModal({ onClose }) {
             <p>No clients to remove</p>
           </div>
         ) : (
+          <>
+          <div className="client-search" style={{ marginBottom: 8 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name, MRM ID or type..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 2px 12px' }}>
+            {searchTerm.trim()
+              ? `${filteredClients.length} of ${clients.length} clients match`
+              : `${clients.length} clients`}
+          </div>
+          {filteredClients.length === 0 ? (
+            <div className="empty-state">
+              <p>No clients match &ldquo;{searchTerm.trim()}&rdquo;</p>
+            </div>
+          ) : (
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            {clients.map(client => (
+            {filteredClients.map(client => (
               <div
                 key={client.clientId}
                 style={{
@@ -205,7 +240,7 @@ function RemoveClientModal({ onClose }) {
                 <button
                   className="btn btn-danger"
                   style={{ padding: '8px 16px', fontSize: 12 }}
-                  onClick={() => handleRemove(client.clientId)}
+                  onClick={() => handleRemove(client.clientId, client.name)}
                   disabled={loading === client.clientId}
                 >
                   {loading === client.clientId ? 'Removing...' : 'Remove'}
@@ -213,6 +248,8 @@ function RemoveClientModal({ onClose }) {
               </div>
             ))}
           </div>
+          )}
+          </>
         )}
       </div>
       <div className="modal-footer">
