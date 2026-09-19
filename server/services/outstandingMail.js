@@ -118,6 +118,7 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
         <div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#2E6DA4;margin-top:2px;">${esc(r.clientId)}</div>
       </td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:11.5px;color:#8a93a3;white-space:nowrap;">${esc(r.month)}</td>
+      <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;color:${r.outstanding > 0 ? '#1F3864' : r.outstanding <= -1 ? '#B01414' : '#1F6B24'};">${formatNumber(r.outstanding)}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;">
         <a href="${esc(statementUrl(r.clientId, 'outstanding'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;">Balance build-up</a>
         <a href="${esc(statementUrl(r.clientId, 'full'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;margin-left:5px;">Full record</a>
@@ -164,6 +165,7 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
         <th style="padding:10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;">#</th>
         <th style="padding:10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;">Client</th>
         <th style="padding:10px;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;">Months</th>
+        <th style="padding:10px;text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;">Outstanding</th>
         <th style="padding:10px;text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;">Statement</th>
       </tr>
       ${bodyRows}
