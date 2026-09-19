@@ -233,6 +233,7 @@ function WhatsappReport() {
                       <th>#</th>
                       <th>Client</th>
                       <th>Months</th>
+                      <th className="r">Outstanding</th>
                       <th className="r">Statement</th>
                     </tr>
                   </thead>
@@ -245,6 +246,7 @@ function WhatsappReport() {
                           <div className="wa-id">{r.clientId}</div>
                         </td>
                         <td className="wa-months">{r.month}</td>
+                        <td className={`r wa-out${r.outstanding > 0 ? '' : r.outstanding <= -1 ? ' wa-neg' : ' wa-zero'}`}>{inr(r.outstanding)}</td>
                         <td className="r">
                           <div className="wa-links">
                             <a href={`${r.statementBase}/outstanding?t=${r.statementToken}`} target="_blank" rel="noreferrer">Balance build-up</a>
