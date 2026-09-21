@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
+import ClientFormModal from './ClientFormModal';
+import { buildClientMasterCsv, downloadCsv } from '../utils/clientProfile';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -16,133 +18,6 @@ const monthLabels = {
   dec: 'December', jan: 'January', feb: 'February', mar: 'March',
 };
 
-// Add Client Modal
-function AddClientModal({ onClose }) {
-  const { addClient, showToast } = useApp();
-  const [formData, setFormData] = useState({
-    clientId: '',
-    name: '',
-    type: 'Composer',
-    fee: '0.15',
-    gstRate: '18',
-  });
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.clientId || !formData.name) {
-      showToast('Please fill in all required fields', 'warning');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const fee = parseFloat(formData.fee);
-      await addClient({
-        ...formData,
-        fee,
-        commissionRate: fee * 100,
-        gstRate: parseFloat(formData.gstRate) || 18,
-      });
-      onClose();
-    } catch (error) {
-      // Error is handled in context
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="modal">
-      <div className="modal-header">
-        <h3>Add New Client</h3>
-        <button className="modal-close" onClick={onClose}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <form onSubmit={handleSubmit}>
-        <div className="modal-body">
-          <div className="input-group" style={{ marginBottom: 16 }}>
-            <label>Client ID *</label>
-            <input
-              type="text"
-              value={formData.clientId}
-              onChange={(e) => setFormData({ ...formData, clientId: e.target.value.toUpperCase() })}
-              placeholder="e.g., MRM001"
-              required
-            />
-          </div>
-          <div className="input-group" style={{ marginBottom: 16 }}>
-            <label>Client Name *</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Full name"
-              required
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div className="input-group">
-              <label>Client Type</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              >
-                <option value="Composer">Composer</option>
-                <option value="Lyricist">Lyricist</option>
-                <option value="Singer">Singer</option>
-                <option value="Music Director">Music Director</option>
-                <option value="Publisher">Publisher</option>
-                <option value="Producer">Producer</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label>Service Fee (%)</label>
-              <select
-                value={formData.fee}
-                onChange={(e) => setFormData({ ...formData, fee: e.target.value })}
-              >
-                <option value="0.05">5%</option>
-                <option value="0.07">7%</option>
-                <option value="0.10">10%</option>
-                <option value="0.12">12%</option>
-                <option value="0.15">15%</option>
-                <option value="0.17">17%</option>
-                <option value="0.20">20%</option>
-                <option value="0.25">25%</option>
-                <option value="0.27">27%</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label>GST Rate (%)</label>
-              <input
-                type="number"
-                value={formData.gstRate}
-                onChange={(e) => setFormData({ ...formData, gstRate: e.target.value })}
-                placeholder="18"
-                min="0"
-                max="100"
-                step="0.01"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-success" disabled={loading}>
-            {loading ? 'Adding...' : 'Add Client'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 // Remove Client Modal
 function RemoveClientModal({ onClose }) {
   const { clients, removeClient } = useApp();
@@ -155,7 +30,9 @@ function RemoveClientModal({ onClose }) {
     return clients.filter(client =>
       (client.name || '').toLowerCase().includes(term) ||
       (client.clientId || '').toLowerCase().includes(term) ||
-      (client.type || '').toLowerCase().includes(term)
+      (client.type || '').toLowerCase().includes(term) ||
+      (client.phone || '').toLowerCase().includes(term) ||
+      (client.email || '').toLowerCase().includes(term)
     );
   }, [clients, searchTerm]);
 
@@ -197,7 +74,7 @@ function RemoveClientModal({ onClose }) {
             </svg>
             <input
               type="text"
-              placeholder="Search by name, MRM ID or type..."
+              placeholder="Search by name, MRM ID, type, phone or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               autoFocus
@@ -442,21 +319,7 @@ function ExportModal({ onClose }) {
   };
 
   const exportClients = () => {
-    let csv = 'Client ID,Client Name,Type,Service Fee\n';
-
-    clients.forEach(client => {
-      csv += `${client.clientId},"${client.name}","${client.type}",${(client.fee * 100).toFixed(0)}%\n`;
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MRM_Clients_Export_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadCsv(buildClientMasterCsv(clients), `MRM_Clients_Export_${new Date().toISOString().split('T')[0]}.csv`);
 
     showToast('Clients exported successfully!');
   };
@@ -521,10 +384,10 @@ function Modals() {
   const { activeModal, closeModal } = useApp();
 
   if (!activeModal || activeModal === 'reports') return null;
+  if (activeModal === 'addClient') return <ClientFormModal onClose={closeModal} />;
 
   return (
     <div className="modal-overlay show" onClick={(e) => e.target === e.currentTarget && closeModal()}>
-      {activeModal === 'addClient' && <AddClientModal onClose={closeModal} />}
       {activeModal === 'removeClient' && <RemoveClientModal onClose={closeModal} />}
       {activeModal === 'settings' && <SettingsModal onClose={closeModal} />}
       {activeModal === 'viewEntries' && <ViewEntriesModal onClose={closeModal} />}
