@@ -11,6 +11,29 @@ function getYearForMonth(month, financialYear) {
   return ['jan', 'feb', 'mar'].includes(month) ? financialYear.endYear : financialYear.startYear;
 }
 
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Field-level problems (bad email, unknown society...) are the caller's to fix, not a server fault.
+function sendSaveError(res, error, action) {
+  if (error.name === 'ValidationError') {
+    const message = Object.values(error.errors).map((e) => e.message).join('; ');
+    return res.status(400).json({ message });
+  }
+  console.error(`Error ${action} client:`, error);
+  if (error.code === 11000) return res.status(400).json({ message: 'Client ID already exists' });
+  return res.status(500).json({ message: 'Server error', error: error.message });
+}
+
+// Copy the client-master fields present in the request body onto the document.
+function applyProfileFields(client, body) {
+  const { clientType, societies, phone, email, gstId } = body;
+  if (clientType !== undefined) client.clientType = clientType;
+  if (societies !== undefined) client.societies = Array.isArray(societies) ? societies : [];
+  if (phone !== undefined) client.phone = phone;
+  if (email !== undefined) client.email = email;
+  if (gstId !== undefined) client.gstId = gstId;
+}
+
 // Protect all client routes
 router.use(authenticateToken);
 
@@ -30,9 +53,12 @@ router.get('/', async (req, res) => {
     
     // Search functionality
     if (search) {
+      const term = { $regex: escapeRegex(search), $options: 'i' };
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { clientId: { $regex: search, $options: 'i' } }
+        { name: term },
+        { clientId: term },
+        { phone: term },
+        { email: term }
       ];
     }
     
@@ -68,7 +94,9 @@ router.get('/:id', async (req, res) => {
 // @access  Public
 router.post('/', async (req, res) => {
   try {
-    const { clientId, name, type, clientType, fee, commissionRate, gstRate, previousBalance, iprs, prs, isamra } = req.body;
+    const { clientId, name, type, fee, commissionRate, gstRate, previousBalance, iprs, prs, isamra, societies, clientType } = req.body;
+    // Older callers send only the label and the three society flags.
+    const sendsProfile = societies !== undefined || clientType !== undefined;
 
     // Check if client ID already exists
     const existingClient = await Client.findOne({ clientId });
@@ -76,13 +104,17 @@ router.post('/', async (req, res) => {
       // If client exists but is inactive, reactivate with new data
       if (!existingClient.isActive) {
         existingClient.name = name || existingClient.name;
-        existingClient.type = type || existingClient.type;
-        existingClient.clientType = clientType !== undefined ? clientType : existingClient.clientType;
+        if (!sendsProfile && type) existingClient.type = type;
         existingClient.fee = fee !== undefined ? parseFloat(fee) : existingClient.fee;
+        if (commissionRate !== undefined) existingClient.commissionRate = parseFloat(commissionRate) || 0;
+        if (gstRate !== undefined) existingClient.gstRate = parseFloat(gstRate);
         existingClient.previousBalance = previousBalance !== undefined ? previousBalance : existingClient.previousBalance;
-        existingClient.iprs = iprs !== undefined ? iprs : existingClient.iprs;
-        existingClient.prs = prs !== undefined ? prs : existingClient.prs;
-        existingClient.isamra = isamra !== undefined ? isamra : existingClient.isamra;
+        if (!sendsProfile) {
+          existingClient.iprs = iprs !== undefined ? iprs : existingClient.iprs;
+          existingClient.prs = prs !== undefined ? prs : existingClient.prs;
+          existingClient.isamra = isamra !== undefined ? isamra : existingClient.isamra;
+        }
+        applyProfileFields(existingClient, req.body);
         existingClient.isActive = true;
         await existingClient.save();
         return res.status(201).json(existingClient);
@@ -93,8 +125,7 @@ router.post('/', async (req, res) => {
     const client = new Client({
       clientId,
       name,
-      type: type || 'Other',
-      clientType: clientType || '',
+      type: sendsProfile ? undefined : (type || 'Other'),
       fee: parseFloat(fee) || 0.10,
       commissionRate: parseFloat(commissionRate) || 0,
       gstRate: gstRate !== undefined ? parseFloat(gstRate) : 18,
@@ -103,16 +134,12 @@ router.post('/', async (req, res) => {
       prs: prs || false,
       isamra: isamra || false
     });
+    applyProfileFields(client, req.body);
 
     await client.save();
     res.status(201).json(client);
   } catch (error) {
-    console.error('Error creating client:', error);
-    if (error.code === 11000) {
-      res.status(400).json({ message: 'Client ID already exists' });
-    } else {
-      res.status(500).json({ message: 'Server error', error: error.message });
-    }
+    sendSaveError(res, error, 'creating');
   }
 });
 
@@ -121,7 +148,9 @@ router.post('/', async (req, res) => {
 // @access  Public
 router.put('/:id', async (req, res) => {
   try {
-    const { name, type, clientType, fee, commissionRate, previousBalance, iprs, prs, isamra, isActive, contracts } = req.body;
+    const { name, type, fee, commissionRate, gstRate, previousBalance, iprs, prs, isamra, isActive, contracts, societies, clientType } = req.body;
+    // Older callers send only the label and the three society flags.
+    const sendsProfile = societies !== undefined || clientType !== undefined;
 
     const client = await Client.findOne({ clientId: req.params.id });
 
@@ -132,39 +161,45 @@ router.put('/:id', async (req, res) => {
     // Update fields
     const oldName = client.name;
     const oldType = client.type;
+    const oldCommissionRate = client.commissionRate;
     if (name) client.name = name;
-    if (type) client.type = type;
-    if (clientType !== undefined) client.clientType = clientType;
+    if (type && !sendsProfile) client.type = type;
     if (fee !== undefined) client.fee = parseFloat(fee);
     if (commissionRate !== undefined) client.commissionRate = parseFloat(commissionRate);
+    if (gstRate !== undefined && gstRate !== '') client.gstRate = parseFloat(gstRate);
     if (previousBalance !== undefined) client.previousBalance = previousBalance;
-    if (iprs !== undefined) client.iprs = iprs;
-    if (prs !== undefined) client.prs = prs;
-    if (isamra !== undefined) client.isamra = isamra;
+    if (!sendsProfile) {
+      if (iprs !== undefined) client.iprs = iprs;
+      if (prs !== undefined) client.prs = prs;
+      if (isamra !== undefined) client.isamra = isamra;
+    }
     if (isActive !== undefined) client.isActive = isActive;
     if (contracts !== undefined) client.contracts = contracts;
-    
+    applyProfileFields(client, req.body);
+
     await client.save();
 
-    // Cascade name change to all RoyaltyAccounting entries
-    if (name && name !== oldName) {
+    // The monthly entries mirror the client's name and royalty label. These are
+    // relabels, not edits, so they leave each entry's updatedAt alone.
+    if (client.name !== oldName) {
       await RoyaltyAccounting.updateMany(
         { clientId: req.params.id },
-        { $set: { clientName: name } }
+        { $set: { clientName: client.name } },
+        { timestamps: false }
+      );
+    }
+    if (client.type !== oldType) {
+      await RoyaltyAccounting.updateMany(
+        { clientId: req.params.id },
+        { $set: { royaltyType: client.type } },
+        { timestamps: false }
       );
     }
 
-    // Cascade royalty type change to all RoyaltyAccounting entries - the client
-    // record owns this field, the monthly entries only mirror it.
-    if (type && type !== oldType) {
-      await RoyaltyAccounting.updateMany(
-        { clientId: req.params.id },
-        { $set: { royaltyType: type } }
-      );
-    }
-
-    // Cascade commission rate change to all RoyaltyAccounting entries (in chronological order)
-    if (commissionRate !== undefined) {
+    // Cascade a commission rate change to all RoyaltyAccounting entries (in chronological order).
+    // Only when the rate really changed - re-saving every entry for a phone edit would
+    // re-chain outstanding balances and mark every month as edited today.
+    if (commissionRate !== undefined && client.commissionRate !== oldCommissionRate) {
       const entries = await RoyaltyAccounting.find({ clientId: req.params.id });
 
       // Chronological position: FY-apr = 0..FY-mar = 11.
@@ -194,8 +229,7 @@ router.put('/:id', async (req, res) => {
 
     res.json(client);
   } catch (error) {
-    console.error('Error updating client:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendSaveError(res, error, 'updating');
   }
 });
 

@@ -1,4 +1,17 @@
 const mongoose = require('mongoose');
+const {
+  SOCIETIES,
+  DEFAULT_CLIENT_TYPE,
+  normalizeSocieties,
+  parseTypeLabel,
+  composeTypeLabel,
+  normalizePhone,
+  normalizeEmail,
+  normalizeGstId,
+  invalidPhones,
+  invalidEmails,
+  isValidGstId,
+} = require('../utils/clientProfile');
 
 const clientSchema = new mongoose.Schema({
   clientId: {
@@ -12,15 +25,53 @@ const clientSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  // Royalty label shown on entries, statements and emails ("Royalty – IPRS + PRS").
+  // Built from clientType + societies on save - edit those, not this.
   type: {
     type: String,
     trim: true,
     default: 'Composer'
   },
+  // Category of client: Royalty, Composer, In House, ...
   clientType: {
     type: String,
     trim: true,
     default: ''
+  },
+  societies: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: (list) => list.every((s) => SOCIETIES.includes(s)),
+      message: (props) => `Unknown society: ${props.value.filter((s) => !SOCIETIES.includes(s)).join(', ')}`
+    }
+  },
+  phone: {
+    type: String,
+    trim: true,
+    default: '',
+    validate: {
+      validator: (v) => invalidPhones(v).length === 0,
+      message: (props) => `Invalid phone number: ${invalidPhones(props.value).join(', ')}`
+    }
+  },
+  email: {
+    type: String,
+    trim: true,
+    default: '',
+    validate: {
+      validator: (v) => invalidEmails(v).length === 0,
+      message: (props) => `Invalid email: ${invalidEmails(props.value).join(', ')}`
+    }
+  },
+  gstId: {
+    type: String,
+    trim: true,
+    default: '',
+    validate: {
+      validator: isValidGstId,
+      message: (props) => `Invalid GST ID "${props.value}" - expected 15 characters like 27AAPFU0939F1ZV`
+    }
   },
   fee: {
     type: Number,
@@ -90,6 +141,42 @@ const clientSchema = new mongoose.Schema({
 
 // Index for faster searches
 clientSchema.index({ name: 'text' });
+
+// Keep the royalty label, the society list and the IPRS/PRS/ISAMRA flags in step.
+// Runs before validation so the validators see the tidied values.
+clientSchema.pre('validate', function(next) {
+  if (this.isModified('phone')) this.phone = normalizePhone(this.phone);
+  if (this.isModified('email')) this.email = normalizeEmail(this.email);
+  if (this.isModified('gstId')) this.gstId = normalizeGstId(this.gstId);
+
+  // A society name typed as the client type ("IPRS") belongs in the society list.
+  if (this.isModified('clientType') && normalizeSocieties([this.clientType]).some((s) => SOCIETIES.includes(s))) {
+    this.societies = [...this.societies, this.clientType];
+    this.clientType = DEFAULT_CLIENT_TYPE;
+  }
+
+  const profileChanged = this.isModified('societies') || this.isModified('clientType');
+  const hasProfile = this.societies.length > 0 || !!this.clientType;
+
+  if (profileChanged && hasProfile) {
+    this.societies = normalizeSocieties(this.societies);
+    this.type = composeTypeLabel(this.clientType, this.societies);
+  } else if (this.isModified('type') || (this.isNew && !hasProfile)) {
+    // Callers that only send the free-text label (older screens, bulk import):
+    // read the type and societies out of it. A label carrying extra notes is kept as typed.
+    const parsed = parseTypeLabel(this.type);
+    this.clientType = parsed.clientType;
+    this.societies = parsed.societies;
+    if (!parsed.residue.length) this.type = composeTypeLabel(parsed.clientType, parsed.societies);
+  }
+
+  if (this.isModified('societies')) {
+    this.iprs = this.societies.includes('IPRS');
+    this.prs = this.societies.includes('PRS');
+    this.isamra = this.societies.includes('ISAMRA');
+  }
+  next();
+});
 
 // Pre-save middleware to update the updatedAt field
 clientSchema.pre('save', function(next) {

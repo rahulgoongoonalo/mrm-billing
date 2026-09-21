@@ -11,7 +11,9 @@ function ClientPanel() {
     const term = searchTerm.toLowerCase();
     return clients.filter(client =>
       client.name.toLowerCase().includes(term) ||
-      client.clientId.toLowerCase().includes(term)
+      client.clientId.toLowerCase().includes(term) ||
+      (client.phone || '').includes(term) ||
+      (client.email || '').includes(term)
     );
   }, [clients, searchTerm]);
 

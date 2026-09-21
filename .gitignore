@@ -24,3 +24,6 @@ Thumbs.db
 
 # Generated client statements (contain live client financial data)
 docs/
+
+# Client-master migration backups (contain client contact details)
+server/backups/

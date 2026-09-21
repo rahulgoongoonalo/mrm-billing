@@ -6,6 +6,14 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Footer from './Footer';
 import WhatsappReport from './WhatsappReport';
+import ClientFormModal from './ClientFormModal';
+import {
+  SOCIETIES as CLIENT_SOCIETIES,
+  societyClass as clientSocietyClass,
+  profileOf,
+  buildClientMasterCsv,
+  downloadCsv,
+} from '../utils/clientProfile';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -149,8 +157,12 @@ const DateRangeFilter = ({ dateFrom, dateTo, setDateFrom, setDateTo, clients, ex
 function ReportsPanel({ onClose }) {
   const { clients, billingEntries, settings, updateClient, showToast } = useApp();
   const [activeReport, setActiveReport] = useState('dashboard');
-  const [selectedClientForEdit, setSelectedClientForEdit] = useState(null);
-  const [editFormData, setEditFormData] = useState(null);
+  const [editingClient, setEditingClient] = useState(null);
+  const [addingClient, setAddingClient] = useState(false);
+  const [masterSearch, setMasterSearch] = useState('');
+  const [masterType, setMasterType] = useState('all');
+  const [masterSociety, setMasterSociety] = useState('all');
+  const [masterMissing, setMasterMissing] = useState('all');
   const [expandedClient, setExpandedClient] = useState(null);
   const [clientSearch, setClientSearch] = useState('');
 
@@ -251,6 +263,32 @@ function ReportsPanel({ onClose }) {
       .filter(c => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()) || c.clientId.toLowerCase().includes(clientSearch.toLowerCase()))
       .sort((a, b) => (parseInt(a.clientId?.match(/(\d+)/)?.[1], 10) || 0) - (parseInt(b.clientId?.match(/(\d+)/)?.[1], 10) || 0));
   }, [clients, excludedClients, clientSearch]);
+
+  // Client Master: search and type / society / missing-detail filters on top of the shared client filter
+  const masterTypeOptions = useMemo(
+    () => [...new Set(clients.map(c => profileOf(c).clientType).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [clients]
+  );
+  const masterSocietyCounts = useMemo(() => {
+    const counts = {};
+    filteredClients.forEach(c => profileOf(c).societies.forEach(s => { counts[s] = (counts[s] || 0) + 1; }));
+    return counts;
+  }, [filteredClients]);
+  const masterClients = useMemo(() => {
+    const term = masterSearch.trim().toLowerCase();
+    return filteredClients.filter(c => {
+      const { clientType, societies } = profileOf(c);
+      if (masterType !== 'all' && clientType !== masterType) return false;
+      if (masterSociety !== 'all' && !societies.includes(masterSociety)) return false;
+      if (masterMissing === 'society' && societies.length) return false;
+      if (masterMissing === 'contact' && c.phone && c.email) return false;
+      if (masterMissing === 'gst' && c.gstId) return false;
+      if (!term) return true;
+      return [c.name, c.clientId, c.phone, c.email, c.gstId, c.type].some(v => (v || '').toLowerCase().includes(term));
+    });
+  }, [filteredClients, masterSearch, masterType, masterSociety, masterMissing]);
+  const masterFiltered = masterSearch.trim() !== '' || masterType !== 'all' || masterSociety !== 'all' || masterMissing !== 'all';
+  const clearMasterFilters = () => { setMasterSearch(''); setMasterType('all'); setMasterSociety('all'); setMasterMissing('all'); };
 
   // Group entries by clientId, sorted by financial year month order
   const entriesByClient = useMemo(() => {
@@ -1319,12 +1357,8 @@ function ReportsPanel({ onClose }) {
 
     switch (reportType) {
       case 'client-master':
-        csv = 'Client ID,Client Name,Type,Commission Rate\n';
-        filteredClients.forEach(client => {
-          csv += `${client.clientId},"${client.name}","${client.type}",${client.commissionRate ?? (client.fee * 100).toFixed(0)}%\n`;
-        });
-        filename = 'MRM_Client_Master_Report.csv';
-        break;
+        downloadCsv(buildClientMasterCsv(masterClients), 'MRM_Client_Master_Report.csv');
+        return;
 
       case 'commission':
         csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,MLC,Total Commission\n';
@@ -1653,65 +1687,131 @@ function ReportsPanel({ onClose }) {
             <div className="report-page-header">
               <div className="report-page-title">
                 <h2>Client Master Report</h2>
-                <p>Complete list of all registered clients</p>
+                <p>Every registered client with type, societies, rates and contact details. Click a client to edit.</p>
               </div>
-              <button className="btn btn-primary" onClick={() => exportCSV('client-master')}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                Export CSV
-              </button>
+              <div className="cm-actions">
+                <button className="btn btn-secondary" onClick={() => setAddingClient(true)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  Add Client
+                </button>
+                <button className="btn btn-primary" onClick={() => exportCSV('client-master')}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  Export CSV
+                </button>
+              </div>
             </div>
-            <div className="filter-bar">
+            <div className="filter-bar cm-toolbar">
+              <div className="client-search cm-search">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input
+                  type="search"
+                  placeholder="Search name, MRM ID, phone, email or GST ID"
+                  value={masterSearch}
+                  onChange={(e) => setMasterSearch(e.target.value)}
+                  aria-label="Search clients"
+                />
+              </div>
+              <select className="cm-select" value={masterType} onChange={(e) => setMasterType(e.target.value)} aria-label="Filter by client type">
+                <option value="all">All types</option>
+                {masterTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select className="cm-select" value={masterSociety} onChange={(e) => setMasterSociety(e.target.value)} aria-label="Filter by society">
+                <option value="all">All societies</option>
+                {CLIENT_SOCIETIES.map(s => <option key={s} value={s}>{s} ({masterSocietyCounts[s] || 0})</option>)}
+              </select>
+              <select className="cm-select" value={masterMissing} onChange={(e) => setMasterMissing(e.target.value)} aria-label="Filter by missing details">
+                <option value="all">Any details</option>
+                <option value="society">Missing society</option>
+                <option value="contact">Missing phone or email</option>
+                <option value="gst">Missing GST ID</option>
+              </select>
               <ClientFilter clients={clients} excludedClients={excludedClients} setExcludedClients={setExcludedClients} allClientIds={allClientIds} />
             </div>
             <div className="report-container">
               <div className="report-header">
-                <h3>All Clients <span className="count">{filteredClients.length}</span></h3>
+                <h3>
+                  {masterFiltered ? 'Matching Clients' : 'All Clients'}{' '}
+                  <span className="count">{masterClients.length}{masterFiltered ? ` of ${filteredClients.length}` : ''}</span>
+                </h3>
+                {masterFiltered && <button type="button" className="cf-link" onClick={clearMasterFilters}>Clear filters</button>}
               </div>
               <div className="table-wrapper">
-                <table className="report-table">
+                <table className="report-table cm-table">
                   <thead>
                     <tr>
                       <th>Client</th>
-                      <th>Type</th>
-                      <th>Commission Rate</th>
+                      <th>Client Type</th>
+                      <th>Societies</th>
+                      <th>Commission</th>
+                      <th>Phone No</th>
+                      <th>Email</th>
+                      <th>GST ID</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredClients.map(client => (
-                      <tr key={client.clientId} onClick={() => {
-                        setSelectedClientForEdit(client);
-                        setEditFormData({
-                          name: client.name,
-                          type: client.type || '',
-                          clientType: client.clientType || '',
-                          commissionRate: client.commissionRate ?? (client.fee * 100),
-                          previousBalance: client.previousBalance || 0,
-                          iprs: client.iprs || false,
-                          prs: client.prs || false,
-                          isamra: client.isamra || false,
-                        });
-                      }} style={{ cursor: 'pointer' }}>
-                        <td>
-                          <div className="client-cell">
-                            <div className="client-avatar">{getClientInitials(client.name)}</div>
-                            <div className="client-info">
-                              <div className="name">{client.name}</div>
-                              <div className="id">{client.clientId}</div>
+                    {masterClients.length === 0 ? (
+                      <tr><td colSpan={8} className="cm-empty">No clients match these filters.</td></tr>
+                    ) : masterClients.map(client => {
+                      const { clientType, societies } = profileOf(client);
+                      const phones = (client.phone || '').split(/\s*,\s*/).filter(Boolean);
+                      const emails = (client.email || '').split(/\s*,\s*/).filter(Boolean);
+                      return (
+                        <tr
+                          key={client.clientId}
+                          onClick={() => setEditingClient(client)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') setEditingClient(client); }}
+                          tabIndex={0}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td>
+                            <div className="client-cell">
+                              <div className="client-avatar">{getClientInitials(client.name)}</div>
+                              <div className="client-info">
+                                <div className="name">{client.name}</div>
+                                <div className="id">{client.clientId}</div>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td>{client.type}</td>
-                        <td><span className="amount highlight">{client.commissionRate ?? (client.fee * 100).toFixed(0)}%</span></td>
-                        <td><span className={`status-badge ${client.isActive !== false ? 'yes' : 'no'}`}>
-                          {client.isActive !== false ? 'Active' : 'Inactive'}
-                        </span></td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td>{clientType}</td>
+                          <td>
+                            {societies.length ? (
+                              <div className="society-tags">
+                                {societies.map(s => <span key={s} className={`society-tag ${clientSocietyClass(s)}`}>{s}</span>)}
+                              </div>
+                            ) : <span className="cm-missing">—</span>}
+                          </td>
+                          <td><span className="amount highlight">{client.commissionRate ?? (client.fee * 100).toFixed(0)}%</span></td>
+                          <td className="cm-contact">
+                            {phones.length ? (
+                              <>{phones[0]}{phones.length > 1 && <span className="cm-more" title={phones.slice(1).join(', ')}>+{phones.length - 1}</span>}</>
+                            ) : <span className="cm-missing">—</span>}
+                          </td>
+                          <td className="cm-contact">
+                            {emails.length ? (
+                              <span className="cm-email-cell">
+                                <span className="cm-email" title={emails.join(', ')}>{emails[0]}</span>
+                                {emails.length > 1 && <span className="cm-more" title={emails.slice(1).join(', ')}>+{emails.length - 1}</span>}
+                              </span>
+                            ) : <span className="cm-missing">—</span>}
+                          </td>
+                          <td className="cm-contact">{client.gstId || <span className="cm-missing">—</span>}</td>
+                          <td><span className={`status-badge ${client.isActive !== false ? 'yes' : 'no'}`}>
+                            {client.isActive !== false ? 'Active' : 'Inactive'}
+                          </span></td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3188,120 +3288,9 @@ function ReportsPanel({ onClose }) {
         </div>
       )}
 
-      {/* Client Detail Edit Modal */}
-      {selectedClientForEdit && editFormData && (
-        <div className="modal-overlay show" onClick={() => setSelectedClientForEdit(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <div className="modal-header">
-              <h3>Edit Client: {selectedClientForEdit.clientId}</h3>
-              <button className="modal-close" onClick={() => setSelectedClientForEdit(null)}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="input-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <div className="input-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Client Name</label>
-                  <input
-                    type="text"
-                    value={editFormData.name}
-                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Type</label>
-                  <input
-                    type="text"
-                    value={editFormData.type}
-                    onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Client Type</label>
-                  <input
-                    type="text"
-                    value={editFormData.clientType}
-                    onChange={(e) => setEditFormData({ ...editFormData, clientType: e.target.value })}
-                  />
-                </div>
-                <div className="input-group">
-                  <label>Commission Rate (%)</label>
-                  <div className="input-prefix">
-                    <span>%</span>
-                    <input
-                      type="number"
-                      value={editFormData.commissionRate}
-                      onChange={(e) => setEditFormData({ ...editFormData, commissionRate: parseFloat(e.target.value) || 0 })}
-                      step="0.01"
-                    />
-                  </div>
-                </div>
-                <div className="input-group">
-                  <label>Previous Balance</label>
-                  <div className="input-prefix">
-                    <span>&#8377;</span>
-                    <input
-                      type="number"
-                      value={editFormData.previousBalance}
-                      onChange={(e) => setEditFormData({ ...editFormData, previousBalance: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                </div>
-                <div className="input-group" style={{ gridColumn: 'span 2', display: 'flex', gap: 24, alignItems: 'center', paddingTop: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, textTransform: 'none', letterSpacing: 0, fontSize: 14 }}>
-                    <input
-                      type="checkbox"
-                      checked={editFormData.iprs}
-                      onChange={(e) => setEditFormData({ ...editFormData, iprs: e.target.checked })}
-                      style={{ width: 18, height: 18, accentColor: 'var(--accent-blue)' }}
-                    />
-                    IPRS
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, textTransform: 'none', letterSpacing: 0, fontSize: 14 }}>
-                    <input
-                      type="checkbox"
-                      checked={editFormData.prs}
-                      onChange={(e) => setEditFormData({ ...editFormData, prs: e.target.checked })}
-                      style={{ width: 18, height: 18, accentColor: 'var(--accent-blue)' }}
-                    />
-                    PRS
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, textTransform: 'none', letterSpacing: 0, fontSize: 14 }}>
-                    <input
-                      type="checkbox"
-                      checked={editFormData.isamra}
-                      onChange={(e) => setEditFormData({ ...editFormData, isamra: e.target.checked })}
-                      style={{ width: 18, height: 18, accentColor: 'var(--accent-blue)' }}
-                    />
-                    ISAMRA
-                  </label>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelectedClientForEdit(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={async () => {
-                  try {
-                    await updateClient(selectedClientForEdit.clientId, editFormData);
-                    setSelectedClientForEdit(null);
-                  } catch (error) {
-                    // updateClient already shows toast on error
-                  }
-                }}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Client add / edit */}
+      {editingClient && <ClientFormModal client={editingClient} onClose={() => setEditingClient(null)} />}
+      {addingClient && <ClientFormModal onClose={() => setAddingClient(false)} />}
     </div>
   );
 }
