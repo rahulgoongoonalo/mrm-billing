@@ -314,13 +314,22 @@ export function AppProvider({ children }) {
       }, {});
       dispatch({ type: ActionTypes.SET_BILLING_ENTRIES, payload: entriesMap });
 
+      // The open form still holds the entry for the year we just left. Re-point
+      // it at the new year's entry for the same client and month, or clear it.
+      // Without this, saving files last year's figures under the new year - which
+      // is how a handful of April entries became copies of the previous April.
+      if (state.selectedClient) {
+        const key = `${state.selectedClient.clientId}_${state.currentMonth}`;
+        dispatch({ type: ActionTypes.SET_CURRENT_ENTRY, payload: entriesMap[key] || null });
+      }
+
       const created = res.data.entriesCreated || 0;
       showToast(`FY updated to ${startYear}-${startYear + 1}. ${created > 0 ? `${created} entries created.` : 'Entries loaded.'}`);
     } catch (error) {
       showToast('Error updating financial year', 'error');
       throw error;
     }
-  }, [showToast]);
+  }, [showToast, state.selectedClient, state.currentMonth]);
 
   // Modal actions
   const openModal = useCallback((modalName) => {

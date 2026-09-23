@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
+import { SOCIETIES, SOCIETY_FIELDS, societyRate, normalizeSocieties } from '../utils/clientProfile';
 
 const initialFormState = {
   // Configurable Rates
@@ -18,6 +19,8 @@ const initialFormState = {
   soundExchangeAmount: '',
   isamraAmount: '',
   ascapAmount: '',
+  bmiAmount: '',
+  socanAmount: '',
   pplAmount: '',
   mlcAmount: '',
   extraAmount: '',
@@ -41,9 +44,16 @@ export function useBillingForm() {
   const [formData, setFormData] = useState(initialFormState);
   const [isDirty, setIsDirty] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
+  // True when a previous month exists, so its closing balance owns this entry's
+  // carry-forward box and the box is not typed by hand.
+  const [carryForwardLocked, setCarryForwardLocked] = useState(false);
+  // Set when someone deliberately unlocks the box to seed an opening balance.
+  const [carryForwardOverride, setCarryForwardOverride] = useState(false);
 
   // Load entry data when currentEntry, selectedClient, or currentMonth changes
   useEffect(() => {
+    setCarryForwardLocked(false);
+    setCarryForwardOverride(false);
     if (currentEntry) {
       setFormData({
         commissionRate: currentEntry.commissionRate ?? '',
@@ -58,6 +68,8 @@ export function useBillingForm() {
         soundExchangeAmount: currentEntry.soundExchangeAmount || '',
         isamraAmount: currentEntry.isamraAmount || '',
         ascapAmount: currentEntry.ascapAmount || '',
+        bmiAmount: currentEntry.bmiAmount || '',
+        socanAmount: currentEntry.socanAmount || '',
         pplAmount: currentEntry.pplAmount || '',
         mlcAmount: currentEntry.mlcAmount || '',
         extraAmount: currentEntry.extraAmount || '',
@@ -71,6 +83,21 @@ export function useBillingForm() {
       });
       setIsDirty(false);
       setIsReadOnly(currentEntry.status === 'submitted');
+
+      // Show the previous month's real closing balance rather than the copy
+      // stored on this entry, which may predate an edit to that month.
+      if (selectedClient && currentMonth) {
+        const fy = settings.financialYear?.startYear;
+        royaltyApi.getPreviousOutstanding(selectedClient.clientId, currentMonth, fy)
+          .then((res) => {
+            setCarryForwardLocked(!!res.data.exists);
+            if (res.data.exists) {
+              setFormData((prev) => ({ ...prev, previousMonthOutstanding: res.data.totalOutstanding }));
+            }
+
+          })
+          .catch(() => {});
+      }
     } else {
       // Auto-populate commissionRate and gstRate from client
       const clientRate = selectedClient?.commissionRate || (selectedClient?.fee ? selectedClient.fee * 100 : '');
@@ -89,6 +116,7 @@ export function useBillingForm() {
         const fy = settings.financialYear?.startYear;
         royaltyApi.getPreviousOutstanding(selectedClient.clientId, currentMonth, fy)
           .then(res => {
+            setCarryForwardLocked(!!res.data.exists);
             const prevOutstanding = res.data.totalOutstanding;
             if (prevOutstanding) {
               setFormData(prev => ({ ...prev, previousMonthOutstanding: prevOutstanding }));
@@ -132,27 +160,30 @@ export function useBillingForm() {
   const calculations = useMemo(() => {
     const commissionRate = parseFloat(formData.commissionRate) || 0;
     const gstRate = parseFloat(formData.gstRate) || 18;
-    const rate = commissionRate / 100;
     const gstMultiplier = gstRate / 100;
 
-    const iprsAmount = parseFloat(formData.iprsAmount) || 0;
-    const prsAmount = parseFloat(formData.prsAmount) || 0;
-    const soundExchangeAmount = parseFloat(formData.soundExchangeAmount) || 0;
-    const isamraAmount = parseFloat(formData.isamraAmount) || 0;
-    const ascapAmount = parseFloat(formData.ascapAmount) || 0;
-    const pplAmount = parseFloat(formData.pplAmount) || 0;
-    const mlcAmount = parseFloat(formData.mlcAmount) || 0;
-
     // 1. Commission Calculation
-    const iprsCommission = r(iprsAmount * rate);
-    const prsCommission = r(prsAmount * rate);
-    const soundExchangeCommission = r(soundExchangeAmount * rate);
-    const isamraCommission = r(isamraAmount * rate);
-    const ascapCommission = r(ascapAmount * rate);
-    const pplCommission = r(pplAmount * rate);
-    const mlcCommission = r(mlcAmount * rate);
-    const totalCommission = r(iprsCommission + prsCommission + soundExchangeCommission +
-      isamraCommission + ascapCommission + pplCommission + mlcCommission);
+    //
+    // Each society is charged at its own rate. The rate structure belongs to the
+    // client record, not the form, so it is read from selectedClient. In flat
+    // mode societyRate() returns the single commissionRate for every society,
+    // which is what this calculation has always done.
+    const rateSource = {
+      commissionRate,
+      commissionMode: selectedClient?.commissionMode,
+      societyCommissions: selectedClient?.societyCommissions,
+    };
+
+    const commissions = {};
+    let totalCommissionRaw = 0;
+    for (const society of SOCIETIES) {
+      const { amount, commission } = SOCIETY_FIELDS[society];
+      const value = parseFloat(formData[amount]) || 0;
+      const earned = r(value * (societyRate(rateSource, society) / 100));
+      commissions[commission] = earned;
+      totalCommissionRaw += earned;
+    }
+    const totalCommission = r(totalCommissionRaw);
 
     // 2. GST Calculation
     const currentMonthGstBase = parseFloat(formData.currentMonthGstBase) || 0;
@@ -197,13 +228,7 @@ export function useBillingForm() {
     );
 
     return {
-      iprsCommission,
-      prsCommission,
-      soundExchangeCommission,
-      isamraCommission,
-      ascapCommission,
-      pplCommission,
-      mlcCommission,
+      ...commissions,
       totalCommission,
       currentMonthGst,
       currentMonthInvoiceTotal,
@@ -214,7 +239,7 @@ export function useBillingForm() {
       monthlyOutstanding,
       totalOutstanding,
     };
-  }, [formData]);
+  }, [formData, selectedClient]);
 
   // Update field
   const updateField = useCallback((field, value) => {
@@ -277,6 +302,8 @@ export function useBillingForm() {
     soundExchangeAmount: parseFloat(formData.soundExchangeAmount) || 0,
     isamraAmount: parseFloat(formData.isamraAmount) || 0,
     ascapAmount: parseFloat(formData.ascapAmount) || 0,
+    bmiAmount: parseFloat(formData.bmiAmount) || 0,
+    socanAmount: parseFloat(formData.socanAmount) || 0,
     pplAmount: parseFloat(formData.pplAmount) || 0,
     mlcAmount: parseFloat(formData.mlcAmount) || 0,
     extraAmount: parseFloat(formData.extraAmount) || 0,
@@ -287,7 +314,8 @@ export function useBillingForm() {
     previousMonthReceipt: parseFloat(formData.previousMonthReceipt) || 0,
     previousMonthTds: parseFloat(formData.previousMonthTds) || 0,
     previousMonthOutstanding: parseFloat(formData.previousMonthOutstanding) || 0,
-  }), [selectedClient, currentMonth, formData, settings.financialYear]);
+    overrideCarryForward: carryForwardOverride,
+  }), [selectedClient, currentMonth, formData, settings.financialYear, carryForwardOverride]);
 
   // Save as draft
   const handleSaveAsDraft = useCallback(async () => {
@@ -296,27 +324,51 @@ export function useBillingForm() {
     setIsDirty(false);
   }, [selectedClient, buildEntryData, saveEntry]);
 
-  // Validate required royalty amount fields (0 is allowed, empty/blank is not)
-  const validateRoyaltyFields = useCallback(() => {
-    const requiredFields = [
-      { key: 'iprsAmount', label: 'IPRS Amount' },
-      { key: 'prsAmount', label: 'PRS Amount (INR)' },
-      { key: 'soundExchangeAmount', label: 'Sound Exchange Amount' },
-      { key: 'isamraAmount', label: 'ISAMRA Amount' },
-      { key: 'ascapAmount', label: 'ASCAP Amount' },
-      { key: 'pplAmount', label: 'PPL Amount' },
-      { key: 'mlcAmount', label: 'MLC Amount' },
-    ];
+  // Which societies this client is signed to, and therefore which amount boxes
+  // the form should let you fill in.
+  //
+  // Two cases stop this from being a plain membership test:
+  //
+  //  - An entry may already hold money in a society the client is no longer
+  //    listed under. Locking that box would leave the amount counting towards
+  //    commission with no way to correct it, so it stays editable.
+  //  - A client with no societies recorded at all leaves every box open. An
+  //    incomplete client master must never block the month's work.
+  const societyAccess = useMemo(() => {
+    const members = new Set(normalizeSocieties(selectedClient?.societies || []));
+    const noProfile = members.size === 0;
+    const access = {};
+    for (const society of SOCIETIES) {
+      const { amount } = SOCIETY_FIELDS[society];
+      const isMember = members.has(society);
+      const strayAmount = !isMember && (parseFloat(formData[amount]) || 0) !== 0;
+      access[society] = {
+        isMember,
+        strayAmount,
+        editable: noProfile || isMember || strayAmount,
+        required: !noProfile && isMember,
+      };
+    }
+    access.noProfile = noProfile;
+    return access;
+  }, [selectedClient, formData]);
 
-    const missing = requiredFields.filter(f => {
-      const val = formData[f.key];
-      return val === '' || val === undefined || val === null;
-    });
+  // Only the societies the client is signed to have to be filled in - 0 counts
+  // as filled, blank does not. A society the client does not belong to is not
+  // asked for at all, which is why its box is closed in the form.
+  const validateRoyaltyFields = useCallback(() => {
+    const missing = SOCIETIES
+      .filter((society) => societyAccess[society]?.required)
+      .map((society) => ({ society, ...SOCIETY_FIELDS[society] }))
+      .filter(({ amount }) => {
+        const val = formData[amount];
+        return val === '' || val === undefined || val === null;
+      });
 
     if (missing.length > 0) {
-      throw new Error(`Please fill in: ${missing.map(f => f.label).join(', ')}`);
+      throw new Error(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
     }
-  }, [formData]);
+  }, [formData, societyAccess]);
 
   // Submit entry
   const handleSubmit = useCallback(async () => {
@@ -334,9 +386,24 @@ export function useBillingForm() {
     clearForm();
   }, [selectedClient, currentMonth, deleteEntry, clearForm]);
 
+  // The rate actually applied to each society, so the form can print it next to
+  // the commission it produced.
+  const isPerSociety = selectedClient?.commissionMode === 'per-society';
+  const rateFor = useCallback((society) => societyRate({
+    commissionRate: parseFloat(formData.commissionRate) || 0,
+    commissionMode: selectedClient?.commissionMode,
+    societyCommissions: selectedClient?.societyCommissions,
+  }, society), [formData.commissionRate, selectedClient]);
+
   return {
     formData,
     calculations,
+    isPerSociety,
+    rateFor,
+    societyAccess,
+    carryForwardLocked,
+    carryForwardOverride,
+    unlockCarryForward: () => setCarryForwardOverride(true),
     isDirty,
     handleInputChange,
     updateField,

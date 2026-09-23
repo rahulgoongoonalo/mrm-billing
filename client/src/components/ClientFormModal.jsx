@@ -3,7 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
 import {
   SOCIETIES,
-  SOCIETY_AMOUNT_FIELDS,
+  SOCIETY_FIELDS,
   DEFAULT_CLIENT_TYPE,
   societyClass,
   normalizeSocieties,
@@ -51,6 +51,11 @@ function ClientFormModal({ client, onClose }) {
     clientType: original?.clientType || DEFAULT_CLIENT_TYPE,
     societies: original?.societies || [],
     commissionRate: isEdit ? String(client.commissionRate ?? Math.round((client.fee || 0) * 10000) / 100) : '15',
+    commissionMode: client?.commissionMode === 'per-society' ? 'per-society' : 'flat',
+    // Kept as strings keyed by society so a half-typed rate does not become NaN.
+    societyRates: Object.fromEntries(
+      (client?.societyCommissions || []).map(({ society, rate }) => [society, String(rate)])
+    ),
     gstRate: String(client?.gstRate ?? 18),
     previousBalance: String(client?.previousBalance ?? 0),
     phone: client?.phone || '',
@@ -83,8 +88,8 @@ function ClientFormModal({ client, onClose }) {
       .then((res) => {
         if (cancelled) return;
         const rows = Array.isArray(res.data) ? res.data : [];
-        setPaidSocieties(Object.entries(SOCIETY_AMOUNT_FIELDS)
-          .filter(([, field]) => rows.some((e) => (e[field] || 0) > 0))
+        setPaidSocieties(Object.entries(SOCIETY_FIELDS)
+          .filter(([, { amount }]) => rows.some((e) => (e[amount] || 0) > 0))
           .map(([society]) => society));
       })
       .catch(() => {});
@@ -122,8 +127,19 @@ function ClientFormModal({ client, onClose }) {
     const gst = parseFloat(form.gstRate);
     if (Number.isNaN(gst) || gst < 0 || gst > 100) e.gstRate = 'Enter a rate between 0 and 100';
     if (form.previousBalance !== '' && Number.isNaN(parseFloat(form.previousBalance))) e.previousBalance = 'Enter an amount';
+    if (form.commissionMode === 'per-society') {
+      if (!societies.length) {
+        e.societyRates = 'Pick at least one society to set per-society rates';
+      } else {
+        const bad = societies.filter((soc) => {
+          const v = parseFloat(form.societyRates[soc]);
+          return Number.isNaN(v) || v < 0 || v > 100;
+        });
+        if (bad.length) e.societyRates = `Enter a rate between 0 and 100 for ${bad.join(', ')}`;
+      }
+    }
     return e;
-  }, [form, isEdit, clients, clientType]);
+  }, [form, isEdit, clients, clientType, societies]);
   const shown = (field) => ((submitted || touched[field]) ? errors[field] : '');
 
   const handleSubmit = async (e) => {
@@ -137,6 +153,12 @@ function ClientFormModal({ client, onClose }) {
       clientType,
       societies,
       commissionRate,
+      commissionMode: form.commissionMode,
+      // Only the societies the client actually holds are sent; the server
+      // normalises again on save.
+      societyCommissions: form.commissionMode === 'per-society'
+        ? societies.map((soc) => ({ society: soc, rate: parseFloat(form.societyRates[soc]) }))
+        : [],
       gstRate: parseFloat(form.gstRate),
       previousBalance: parseFloat(form.previousBalance) || 0,
       phone: normalizePhone(form.phone),
@@ -287,7 +309,76 @@ function ClientFormModal({ client, onClose }) {
                   </div>
                 </Field>
               </div>
-              {isEdit && <div className="cf-hint">Changing the commission rate recalculates every entry for this client.</div>}
+              <div className="cf-mode-row" role="radiogroup" aria-label="Commission structure">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.commissionMode === 'flat'}
+                  className={`cf-mode${form.commissionMode === 'flat' ? ' on' : ''}`}
+                  onClick={() => setForm((f) => ({ ...f, commissionMode: 'flat' }))}
+                >
+                  <strong>Same rate for all societies</strong>
+                  <span>One commission rate covers every society.</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.commissionMode === 'per-society'}
+                  className={`cf-mode${form.commissionMode === 'per-society' ? ' on' : ''}`}
+                  onClick={() => setForm((f) => ({
+                    ...f,
+                    commissionMode: 'per-society',
+                    // Seed each society with the flat rate so nothing starts blank.
+                    societyRates: Object.fromEntries(societies.map((soc) => [
+                      soc,
+                      f.societyRates[soc] ?? String(f.commissionRate || ''),
+                    ])),
+                  }))}
+                >
+                  <strong>Different rate per society</strong>
+                  <span>Set a separate rate for each society below.</span>
+                </button>
+              </div>
+
+              {form.commissionMode === 'per-society' && (
+                <div className="cf-society-rates">
+                  {societies.length === 0 ? (
+                    <div className="cf-hint">Pick the client&rsquo;s societies above, then set a rate for each.</div>
+                  ) : (
+                    <div className="cf-rate-grid">
+                      {societies.map((soc) => (
+                        <div className="input-group" key={soc}>
+                          <label htmlFor={`cf-rate-${soc}`}>{soc}</label>
+                          <div className="input-prefix">
+                            <span>%</span>
+                            <input
+                              id={`cf-rate-${soc}`}
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={form.societyRates[soc] ?? ''}
+                              onChange={(e) => setForm((f) => ({
+                                ...f,
+                                societyRates: { ...f.societyRates, [soc]: e.target.value },
+                              }))}
+                              onBlur={touch('societyRates')}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {shown('societyRates') && <div className="cf-error">{shown('societyRates')}</div>}
+                </div>
+              )}
+
+              {isEdit && (
+                <div className="cf-hint">
+                  Changing the commission rate or structure recalculates every entry for this client,
+                  in every financial year.
+                </div>
+              )}
             </section>
 
             <section className="cf-section">

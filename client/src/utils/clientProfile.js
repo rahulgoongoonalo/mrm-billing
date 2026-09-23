@@ -8,16 +8,61 @@ export const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA
 
 export const DEFAULT_CLIENT_TYPE = 'Royalty';
 
-// Entry amount field for each society that has one (BMI and SOCAN have none).
-export const SOCIETY_AMOUNT_FIELDS = {
-  IPRS: 'iprsAmount',
-  PRS: 'prsAmount',
-  ASCAP: 'ascapAmount',
-  MLC: 'mlcAmount',
-  ISAMRA: 'isamraAmount',
-  'Sound Exchange': 'soundExchangeAmount',
-  PPL: 'pplAmount',
+// Which columns on a monthly entry hold each society's money. The label is what
+// the data-entry form prints above each amount box.
+export const SOCIETY_FIELDS = {
+  'IPRS': { amount: 'iprsAmount', commission: 'iprsCommission', label: 'IPRS Amount' },
+  'PRS': { amount: 'prsAmount', commission: 'prsCommission', label: 'PRS Amount (INR)' },
+  'ASCAP': { amount: 'ascapAmount', commission: 'ascapCommission', label: 'ASCAP Amount' },
+  'BMI': { amount: 'bmiAmount', commission: 'bmiCommission', label: 'BMI Amount' },
+  'SOCAN': { amount: 'socanAmount', commission: 'socanCommission', label: 'SOCAN Amount' },
+  'MLC': { amount: 'mlcAmount', commission: 'mlcCommission', label: 'MLC Amount' },
+  'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission', label: 'ISAMRA Amount' },
+  'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission', label: 'Sound Exchange Amount' },
+  'PPL': { amount: 'pplAmount', commission: 'pplCommission', label: 'PPL Amount' },
 };
+
+export const COMMISSION_MODES = ['flat', 'per-society'];
+export const DEFAULT_COMMISSION_MODE = 'flat';
+
+/**
+ * Commission rate for one society, as a percentage.
+ *
+ * Anything not explicitly in per-society mode - which includes every client and
+ * entry saved before per-society rates existed - uses the single commissionRate.
+ */
+export function societyRate(doc, society) {
+  const flat = Number(doc && doc.commissionRate) || 0;
+  if (!doc || doc.commissionMode !== 'per-society') return flat;
+  const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
+  const hit = list.find((r) => r && r.society === society);
+  // Falls back to the flat rate rather than zero: the form blocks this case, so
+  // reaching here means older data, and charging 0% would be the costlier bug.
+  return hit && hit.rate != null && !Number.isNaN(Number(hit.rate)) ? Number(hit.rate) : flat;
+}
+
+/** Societies the client has selected but given no rate. Empty unless per-society. */
+export function missingSocietyRates(client) {
+  if (!client || client.commissionMode !== 'per-society') return [];
+  const list = Array.isArray(client.societyCommissions) ? client.societyCommissions : [];
+  return (client.societies || []).filter((s) => {
+    const hit = list.find((r) => r && r.society === s);
+    return !hit || hit.rate == null || Number.isNaN(Number(hit.rate));
+  });
+}
+
+/** Keep only rates for societies the client still has, in canonical order. */
+export function normalizeSocietyCommissions(list, societies) {
+  const src = Array.isArray(list) ? list : [];
+  const keep = new Set(societies || []);
+  return SOCIETIES.filter((s) => keep.has(s)).reduce((out, s) => {
+    const hit = src.find((r) => r && r.society === s);
+    if (hit && hit.rate != null && !Number.isNaN(Number(hit.rate))) {
+      out.push({ society: s, rate: Number(hit.rate) });
+    }
+    return out;
+  }, []);
+}
 
 const SOCIETY_ALIASES = {
   iprs: 'IPRS', prs: 'PRS', ascap: 'ASCAP', bmi: 'BMI', socan: 'SOCAN', mlc: 'MLC', isamra: 'ISAMRA',
@@ -136,6 +181,14 @@ const csvCell = (value) => {
 
 const commissionOf = (c) => c.commissionRate ?? Math.round((c.fee || 0) * 10000) / 100;
 
+/** Commission as a person reads it: "15%", or "IPRS 15% + PRS 20%" per society. */
+export function commissionSummary(c) {
+  if (c?.commissionMode !== 'per-society') return `${commissionOf(c)}%`;
+  const rates = normalizeSocietyCommissions(c.societyCommissions, c.societies);
+  if (!rates.length) return `${commissionOf(c)}%`;
+  return rates.map((r) => `${r.society} ${r.rate}%`).join(' + ');
+}
+
 /** Client master as CSV, one row per client, in the column order of the client master sheet. */
 export function buildClientMasterCsv(clients) {
   const header = ['Client ID', 'Client Name', 'Client Type', 'Society', 'Commission Rate', 'GST Rate', 'Phone No', 'Email', 'GST ID', 'Status'];
@@ -146,7 +199,7 @@ export function buildClientMasterCsv(clients) {
       c.name,
       clientType,
       societies.join(' + '),
-      `${commissionOf(c)}%`,
+      commissionSummary(c),
       `${c.gstRate ?? 18}%`,
       c.phone || '',
       c.email || '',

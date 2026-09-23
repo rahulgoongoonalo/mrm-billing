@@ -8,11 +8,10 @@
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { calOrder, shortLabel, longLabel } = require('./statementBuilder');
+const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 
-const ROYALTY_FIELDS = [
-  'iprsAmount', 'prsAmount', 'soundExchangeAmount',
-  'isamraAmount', 'ascapAmount', 'pplAmount', 'mlcAmount',
-];
+// Derived from the shared society map so a new society is counted here too.
+const ROYALTY_FIELDS = SOCIETIES.map((s) => SOCIETY_FIELDS[s].amount);
 
 const royaltyOf = (e) => ROYALTY_FIELDS.reduce((sum, f) => sum + (e[f] || 0), 0);
 const r2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;

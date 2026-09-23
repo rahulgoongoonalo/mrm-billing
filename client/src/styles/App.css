@@ -1212,3 +1212,159 @@ body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg-p
 .cm-table .client-info .name { white-space: normal; min-width: 170px; max-width: 260px; line-height: 1.35; }
 .cm-table .society-tags { min-width: 150px; }
 .client-form select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888aa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+
+/* ============================================================
+   APP SHELL
+   Persistent sidebar + top bar. Every destination is a page in
+   the sidebar rather than a button that opens an overlay.
+   ============================================================ */
+
+.app-shell { display: flex; height: 100vh; overflow: hidden; }
+
+/* --- Sidebar --- */
+.app-sidebar { width: 264px; flex-shrink: 0; background: var(--bg-secondary); border-right: 1px solid var(--border-color); height: 100vh; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+.app-sidebar-header { display: flex; align-items: center; gap: 12px; padding: 20px 18px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.sidebar-logo { width: 38px; height: 38px; font-size: 14px; border-radius: 10px; }
+.sidebar-brand { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-brand strong { font-size: 14px; font-weight: 700; letter-spacing: -0.2px; }
+.sidebar-brand span { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+.sidebar-close { display: none; margin-left: auto; background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 8px; }
+.sidebar-close:hover { background: var(--bg-input); color: var(--text-primary); }
+
+.app-sidebar-nav { flex: 1; padding: 6px 0 12px; }
+.app-sidebar-nav .nav-section { padding: 2px 12px; }
+/* Tighter than the standalone reports sidebar: 13 destinations plus 5 group
+   headings have to fit above the user footer on a 1080p screen. */
+.app-sidebar-nav .nav-section-title { padding: 10px 12px 4px; }
+.app-sidebar-nav .nav-item { padding: 9px 14px; margin-bottom: 2px; }
+
+.app-sidebar-footer { flex-shrink: 0; display: flex; flex-direction: column; padding: 12px; border-top: 1px solid var(--border-color); }
+.sidebar-user { display: flex; align-items: center; gap: 10px; padding: 8px 10px 12px; }
+.sidebar-avatar { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%); color: white; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.sidebar-user-text { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-user-text strong { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-user-text span { font-size: 11px; color: var(--text-secondary); }
+.sidebar-logout { margin-bottom: 0; }
+.sidebar-logout:hover { background: rgba(240, 64, 64, 0.12); color: var(--accent-red); }
+
+.sidebar-scrim { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 890; }
+
+/* --- Main column --- */
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.app-topbar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 18px 32px; border-bottom: 1px solid var(--border-color); background: var(--bg-primary); }
+.topbar-menu { display: none; background: none; border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 10px; padding: 8px; cursor: pointer; }
+.topbar-menu:hover { background: var(--bg-input); color: var(--text-primary); }
+.topbar-title { flex: 1; min-width: 0; }
+.topbar-title h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+.topbar-title p { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.topbar-fy { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 9px 14px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.2s ease; }
+.topbar-fy:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+.app-content { flex: 1; overflow-y: auto; padding: 28px 32px 56px; }
+
+/* --- Reports rendered inside the shell --- */
+/* The shell owns the sidebar, the padding and the scrolling, so the
+   standalone overlay's own versions of all three are switched off. */
+.reports-embedded { display: block; }
+.reports-embedded .reports-main { padding: 0; height: auto; overflow: visible; }
+/* The top bar already names the page - drop the duplicate heading but keep
+   the per-page action buttons, right-aligned where the heading was. */
+.reports-embedded .report-page-title { display: none; }
+.reports-embedded .report-page-header { justify-content: flex-end; margin-bottom: 0; }
+.reports-embedded .report-page-header > *:not(.report-page-title) { margin-bottom: 24px; }
+
+/* --- Shared page furniture --- */
+.page-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; }
+.page-card--narrow { max-width: 560px; }
+.page-card-header { padding: 22px 24px; border-bottom: 1px solid var(--border-color); }
+.page-card-header h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.page-card-header p { font-size: 13px; color: var(--text-secondary); }
+.page-card-body { padding: 24px; }
+.page-card-footer { padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg-secondary); }
+
+.filter-bar select { padding: 11px 14px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary); font-family: inherit; font-size: 13px; cursor: pointer; }
+.filter-bar select:focus { outline: none; border-color: var(--accent-blue); }
+.filter-count { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.entries-search { flex: 1; min-width: 240px; }
+
+.status-pill { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.status-pill--draft { background: rgba(240, 160, 64, 0.18); color: var(--accent-orange); }
+.status-pill--submitted { background: rgba(146, 208, 80, 0.18); color: var(--accent-green); }
+
+/* --- All Entries --- */
+.entry-list { display: flex; flex-direction: column; gap: 12px; }
+.entry-card { padding: 16px 18px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; transition: border-color 0.2s ease; }
+.entry-card:hover { border-color: var(--border-accent); }
+.entry-card-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.entry-client { font-weight: 600; font-size: 14px; }
+.entry-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.entry-figures strong { color: var(--text-primary); font-weight: 600; }
+.entry-figures .accent { color: var(--accent-blue); }
+.entry-meta { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border-color); display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.entry-meta strong { color: var(--text-primary); font-weight: 500; }
+
+/* --- Export --- */
+.export-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; max-width: 900px; }
+.export-card { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; padding: 22px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; color: inherit; font-family: inherit; cursor: pointer; transition: all 0.2s ease; }
+.export-card:hover { border-color: var(--accent-blue); transform: translateY(-2px); }
+.export-card-icon { width: 46px; height: 46px; flex-shrink: 0; border-radius: 12px; background: var(--bg-input); color: var(--accent-blue); display: flex; align-items: center; justify-content: center; }
+.export-card-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.export-card-text strong { font-size: 15px; font-weight: 600; }
+.export-card-text span { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.export-card-action { margin-left: auto; flex-shrink: 0; align-self: flex-start; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 6px; padding: 3px 8px; }
+
+/* --- Data entry page inside the shell --- */
+/* The shell frees up vertical space the old header used, so the client list
+   grows with the window instead of stopping at a fixed 400px. */
+.app-content .client-panel { top: 0; }
+.app-content .client-list { max-height: calc(100vh - 360px); min-height: 280px; }
+
+@media (max-width: 1024px) {
+  .app-sidebar { position: fixed; top: 0; left: 0; z-index: 900; transform: translateX(-100%); transition: transform 0.25s ease; box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5); }
+  .app-sidebar.open { transform: translateX(0); }
+  .sidebar-scrim.show { display: block; }
+  .sidebar-close { display: block; }
+  .topbar-menu { display: block; }
+  .app-topbar { padding: 14px 18px; }
+  .topbar-title h1 { font-size: 18px; }
+  .topbar-title p { display: none; }
+  .app-content { padding: 20px 18px 48px; }
+  .app-content .client-list { max-height: 340px; }
+}
+
+/* --- Commission structure: flat vs per-society --- */
+.cf-mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.cf-mode { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; color: inherit; font-family: inherit; cursor: pointer; transition: all 0.2s ease; }
+.cf-mode:hover { border-color: var(--border-accent); }
+.cf-mode.on { border-color: var(--accent-blue); background: rgba(0, 176, 240, 0.1); }
+.cf-mode strong { font-size: 13px; font-weight: 600; }
+.cf-mode.on strong { color: var(--accent-blue); }
+.cf-mode span { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; }
+.cf-society-rates { margin-top: 14px; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; }
+.cf-rate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.cf-rate-grid .input-group label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+/* The rate a society's commission was worked out at, shown beside its label. */
+.rate-chip { margin-left: 6px; padding: 1px 6px; border-radius: 5px; background: var(--calculated-bg); border: 1px solid var(--calculated-border); color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0; }
+@media (max-width: 720px) { .cf-mode-row { grid-template-columns: 1fr; } }
+.cm-rate-split { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-blue); line-height: 1.5; }
+
+/* --- Number boxes: no spinner arrows --------------------------------------
+   The up/down arrows sat under the cursor and nudged amounts to 1 or 2 on a
+   stray click. Typing is the only way to change a figure now; BillingForm also
+   blurs a focused box on wheel scroll so the page can be scrolled safely. */
+.data-form input[type="number"]::-webkit-outer-spin-button,
+.data-form input[type="number"]::-webkit-inner-spin-button,
+.modal input[type="number"]::-webkit-outer-spin-button,
+.modal input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.data-form input[type="number"],
+.modal input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* --- Societies the client does not belong to --- */
+.society-blocked { opacity: 0.45; cursor: not-allowed; }
+.society-blocked input { cursor: not-allowed; }
+.society-blocked:hover { opacity: 0.6; }
+.not-member-tag { margin-left: 6px; padding: 1px 6px; border-radius: 5px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.stray-tag { margin-left: 6px; padding: 1px 6px; border-radius: 5px; background: rgba(240, 160, 64, 0.16); border: 1px solid rgba(240, 160, 64, 0.35); color: var(--accent-orange); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.carry-override { margin-left: 8px; background: none; border: none; padding: 0; color: var(--accent-blue); font-family: inherit; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; cursor: pointer; text-decoration: underline; }
+.carry-override:hover { color: var(--text-primary); }

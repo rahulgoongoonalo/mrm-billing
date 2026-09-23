@@ -3,6 +3,7 @@
 // client, either over a trimmed window or the complete record.
 
 const crypto = require('crypto');
+const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 
 const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const monthShort = {
@@ -78,25 +79,13 @@ function pickWindow(rows) {
 
 // Royalty received. These never move the balance - only the commission on them
 // does - so they are reported in their own column, never as an Account line.
-const ROYALTY_SPLIT = [
-  ['iprsAmount', 'IPRS'],
-  ['prsAmount', 'PRS'],
-  ['soundExchangeAmount', 'Sound Exchange'],
-  ['isamraAmount', 'ISAMRA'],
-  ['ascapAmount', 'ASCAP'],
-  ['pplAmount', 'PPL'],
-  ['mlcAmount', 'MLC'],
-];
-
-const COMMISSION_SPLIT = [
-  ['iprsCommission', 'IPRS commission'],
-  ['prsCommission', 'PRS commission'],
-  ['soundExchangeCommission', 'Sound Exchange commission'],
-  ['isamraCommission', 'ISAMRA commission'],
-  ['ascapCommission', 'ASCAP commission'],
-  ['pplCommission', 'PPL commission'],
-  ['mlcCommission', 'MLC commission'],
-];
+//
+// Both lists are derived from the shared society map rather than written out, so
+// a society added there cannot be silently left out of a statement. Leaving one
+// out of COMMISSION_SPLIT would drop its commission from the running balance and
+// the month would stop reconciling.
+const ROYALTY_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].amount, s]);
+const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, `${s} commission`]);
 
 /**
  * Build the statement. `mode` is 'window' (trimmed) or 'full' (every month).
@@ -138,15 +127,27 @@ function buildStatement(client, allRows, opts = 'window') {
   }
 
   const openedFrom = start > 0 ? longLabel(rows[start - 1]) : null;
-  let bal = start > 0 ? n(rows[start], 'previousMonthOutstanding') : (client.previousBalance || 0);
+  // Open where the ledger itself opened. Every stored figure downstream was
+  // derived from this entry's own carried-forward value, so using the client
+  // master's previousBalance instead would disagree with it and show up as a
+  // phantom "carry-forward correction" on the first line.
+  let bal = n(rows[start], 'previousMonthOutstanding');
   const openingBalance = bal;
 
   const window = rows.slice(start, end + 1);
   const lines = [];
   let hiddenAdjustments = 0;
 
+  let prevEntry = start > 0 ? rows[start - 1] : null;
+
   for (const e of window) {
     const items = [];
+
+    // A balance cannot be carried across months that are not held. Where the
+    // record skips a month, the entry's own opening figure is the only truth
+    // available, so it is adopted rather than reported as a discrepancy.
+    const followsOn = prevEntry && calOrder(e) === calOrder(prevEntry) + 1;
+    if (prevEntry && !followsOn) bal = n(e, 'previousMonthOutstanding');
 
     // A stale carried-forward figure shows up as its own line so the column still adds up.
     const drift = r2(n(e, 'previousMonthOutstanding') - bal);
@@ -184,6 +185,7 @@ function buildStatement(client, allRows, opts = 'window') {
       stored: n(e, 'totalOutstanding'),
       reconciles: Math.abs(bal - n(e, 'totalOutstanding')) < 0.005,
     });
+    prevEntry = e;
   }
 
   const royaltyTotal = r2(lines.reduce((t, l) => t + l.royaltyTotal, 0));

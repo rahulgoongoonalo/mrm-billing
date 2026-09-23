@@ -143,8 +143,75 @@ const invalidPhones = (value) => splitList(value).filter((p) => !PHONE_RE.test(p
 const invalidEmails = (value) => String(value || '').split(/\s*,\s*/).filter(Boolean).filter((e) => !EMAIL_RE.test(e));
 const isValidGstId = (value) => !value || GSTIN_RE.test(value);
 
+// Which columns on a monthly entry hold each society's money. Societies live on
+// the client; this maps them to the entry fields that carry the amounts.
+const SOCIETY_FIELDS = {
+  'IPRS': { amount: 'iprsAmount', commission: 'iprsCommission' },
+  'PRS': { amount: 'prsAmount', commission: 'prsCommission' },
+  'ASCAP': { amount: 'ascapAmount', commission: 'ascapCommission' },
+  'BMI': { amount: 'bmiAmount', commission: 'bmiCommission' },
+  'SOCAN': { amount: 'socanAmount', commission: 'socanCommission' },
+  'MLC': { amount: 'mlcAmount', commission: 'mlcCommission' },
+  'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission' },
+  'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission' },
+  'PPL': { amount: 'pplAmount', commission: 'pplCommission' },
+};
+
+const COMMISSION_MODES = ['flat', 'per-society'];
+const DEFAULT_COMMISSION_MODE = 'flat';
+
+/**
+ * Commission rate for one society, as a percentage.
+ *
+ * Anything not explicitly in per-society mode - which includes every client and
+ * every entry saved before per-society rates existed - uses the single
+ * commissionRate, so historical figures recompute exactly as before.
+ *
+ * Works on both Mongoose documents and plain objects, because computeFields
+ * runs against both.
+ */
+function societyRate(doc, society) {
+  const flat = Number(doc && doc.commissionRate) || 0;
+  if (!doc || doc.commissionMode !== 'per-society') return flat;
+  const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
+  const hit = list.find((r) => r && r.society === society);
+  // A society with no rate falls back to the flat rate rather than to zero:
+  // validation blocks that case, so reaching here means older or imported data,
+  // and silently charging 0% commission would be the costlier failure.
+  return hit && hit.rate != null && !Number.isNaN(Number(hit.rate)) ? Number(hit.rate) : flat;
+}
+
+/** Societies the client has selected but given no rate. Empty unless per-society. */
+function missingSocietyRates(client) {
+  if (!client || client.commissionMode !== 'per-society') return [];
+  const list = Array.isArray(client.societyCommissions) ? client.societyCommissions : [];
+  return (client.societies || []).filter((s) => {
+    const hit = list.find((r) => r && r.society === s);
+    return !hit || hit.rate == null || Number.isNaN(Number(hit.rate));
+  });
+}
+
+/** Keep only rates for societies the client still has, in canonical order. */
+function normalizeSocietyCommissions(list, societies) {
+  const src = Array.isArray(list) ? list : [];
+  const keep = new Set(societies || []);
+  return SOCIETIES.filter((s) => keep.has(s)).reduce((out, s) => {
+    const hit = src.find((r) => r && r.society === s);
+    if (hit && hit.rate != null && !Number.isNaN(Number(hit.rate))) {
+      out.push({ society: s, rate: Number(hit.rate) });
+    }
+    return out;
+  }, []);
+}
+
 module.exports = {
   SOCIETIES,
+  SOCIETY_FIELDS,
+  COMMISSION_MODES,
+  DEFAULT_COMMISSION_MODE,
+  societyRate,
+  missingSocietyRates,
+  normalizeSocietyCommissions,
   DEFAULT_CLIENT_TYPE,
   normalizeSocieties,
   parseTypeLabel,

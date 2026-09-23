@@ -11,6 +11,10 @@ const {
   invalidPhones,
   invalidEmails,
   isValidGstId,
+  COMMISSION_MODES,
+  DEFAULT_COMMISSION_MODE,
+  missingSocietyRates,
+  normalizeSocietyCommissions,
 } = require('../utils/clientProfile');
 
 const clientSchema = new mongoose.Schema({
@@ -85,6 +89,22 @@ const clientSchema = new mongoose.Schema({
     default: 0,
     min: 0,
     max: 100
+  },
+  // 'flat'        - commissionRate applies to every society (the default, and
+  //                 how every client behaved before per-society rates existed)
+  // 'per-society' - each selected society has its own rate in societyCommissions
+  commissionMode: {
+    type: String,
+    enum: COMMISSION_MODES,
+    default: DEFAULT_COMMISSION_MODE
+  },
+  societyCommissions: {
+    type: [{
+      _id: false,
+      society: { type: String, enum: SOCIETIES, required: true },
+      rate: { type: Number, required: true, min: 0, max: 100 }
+    }],
+    default: []
   },
   gstRate: {
     type: Number,
@@ -174,6 +194,19 @@ clientSchema.pre('validate', function(next) {
     this.iprs = this.societies.includes('IPRS');
     this.prs = this.societies.includes('PRS');
     this.isamra = this.societies.includes('ISAMRA');
+  }
+
+  // Per-society rates. Rates for societies the client no longer holds are
+  // dropped, but rates are kept when the mode is switched back to flat, so
+  // toggling the switch does not throw away what was typed.
+  this.societyCommissions = normalizeSocietyCommissions(this.societyCommissions, this.societies);
+  if (this.commissionMode === 'per-society') {
+    const missing = missingSocietyRates(this);
+    if (missing.length) {
+      return next(new Error(
+        `Per-society commission needs a rate for every society. Missing: ${missing.join(', ')}`
+      ));
+    }
   }
   next();
 });

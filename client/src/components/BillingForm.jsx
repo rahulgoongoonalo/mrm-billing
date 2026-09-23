@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { useBillingForm } from '../hooks/useBillingForm';
 import RoyaltyDetailModal from './RoyaltyDetailModal';
 import PRSDetailModal from './PRSDetailModal';
+import { SOCIETY_FIELDS, commissionSummary } from '../utils/clientProfile';
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -23,6 +24,12 @@ function BillingForm() {
   const {
     formData,
     calculations,
+    isPerSociety,
+    rateFor,
+    societyAccess,
+    carryForwardLocked,
+    carryForwardOverride,
+    unlockCarryForward,
     handleInputChange,
     clearForm,
     handleSaveAsDraft,
@@ -43,6 +50,65 @@ function BillingForm() {
     ? financialYear.endYear
     : financialYear.startYear;
   const monthLabel = `${monthLabels[currentMonth]} ${year}`;
+
+  // A society box is open only when the client is signed to that society (or it
+  // already holds money from before the client's society list was tidied).
+  // Closed boxes say why rather than silently ignoring a click.
+  const notAMember = (society) => showToast(
+    `${selectedClient?.name || 'This client'} is not a member of ${society}. Add it in Client Master to enter an amount.`,
+    'error'
+  );
+
+  // type="number" boxes change value when the wheel scrolls over a focused one,
+  // which was quietly turning amounts into 1 or 2 while scrolling the page. One
+  // handler on the form covers every box; the spinner arrows are hidden in CSS.
+  const blurNumberOnWheel = () => {
+    const el = document.activeElement;
+    if (el && el.type === 'number') el.blur();
+  };
+
+  // With one rate for everything, say it once. With per-society rates, name each
+  // one the client actually holds - a single "15%" was misleading.
+  const memberList = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL']
+    .filter((s) => societyAccess[s]?.isMember);
+  const commissionSubtitle = isPerSociety && memberList.length
+    ? `Auto-calculated at ${memberList.map((s) => `${s} ${rateFor(s)}%`).join(', ')}`
+    : `Auto-calculated at ${formData.commissionRate || 0}% commission rate`;
+
+  const amountsSubtitle = societyAccess.noProfile
+    ? 'No societies are set for this client, so every box is open. Set them in Client Master to narrow this down.'
+    : `Only this client's societies can be filled in: ${memberList.join(', ')}`;
+
+  const renderSocietyAmount = (society) => {
+    const access = societyAccess[society] || {};
+    const { amount, label } = SOCIETY_FIELDS[society];
+    const blocked = !access.editable;
+    return (
+      <div
+        key={society}
+        className={`input-group${blocked ? ' society-blocked' : ''}`}
+        onClick={blocked && !isReadOnly ? () => notAMember(society) : undefined}
+        title={blocked ? `Not a member of ${society}` : undefined}
+      >
+        <label>
+          {label}
+          {access.required && <span style={{ color: '#ef4444' }}> *</span>}
+          {blocked && <span className="not-member-tag">not a member</span>}
+          {access.strayAmount && <span className="stray-tag">not in society list</span>}
+        </label>
+        <div className="input-prefix"><span>&#8377;</span>
+          <input
+            type="number"
+            name={amount}
+            value={formData[amount]}
+            onChange={handleInputChange}
+            placeholder={blocked ? '\u2014' : '0.00'}
+            disabled={isReadOnly || blocked}
+          />
+        </div>
+      </div>
+    );
+  };
 
   const onSaveDraft = async () => {
     try { await handleSaveAsDraft(); } catch (error) {
@@ -79,7 +145,7 @@ function BillingForm() {
   }
 
   return (
-    <main className="data-form">
+    <main className="data-form" onWheel={blurNumberOnWheel}>
       {/* Form Header */}
       <div className="form-header">
         <div className="form-header-info">
@@ -92,7 +158,7 @@ function BillingForm() {
               </span>
             )}
           </h2>
-          <span>{selectedClient.clientId} • Commission Rate: {formData.commissionRate || 0}%</span>
+          <span>{selectedClient.clientId} • Commission: {commissionSummary(selectedClient)}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {isReadOnly && (
@@ -181,13 +247,13 @@ function BillingForm() {
             </div>
             <div>
               <div className="section-title">Royalty Amounts</div>
-              <div className="section-subtitle">Enter royalty amounts from various sources</div>
+              <div className="section-subtitle">{amountsSubtitle}</div>
             </div>
           </div>
           <div className="input-grid">
             {formData.iprsEntries?.length > 0 ? (
               <div className="input-group royalty-clickable" onClick={() => setIprsModalOpen(true)}>
-                <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span>
+                <label>IPRS Amount{societyAccess['IPRS']?.required && <span style={{ color: '#ef4444' }}> *</span>}
                   <span className="click-hint">Click to view details</span>
                 </label>
                 <div className="input-prefix"><span>&#8377;</span>
@@ -197,11 +263,11 @@ function BillingForm() {
               </div>
             ) : (
               <div className="input-group" style={{ position: 'relative' }}>
-                <label>IPRS Amount <span style={{color:'#ef4444'}}>*</span></label>
+                <label>IPRS Amount{societyAccess['IPRS']?.required && <span style={{ color: '#ef4444' }}> *</span>}{!societyAccess['IPRS']?.editable && <span className="not-member-tag">not a member</span>}{societyAccess['IPRS']?.strayAmount && <span className="stray-tag">not in society list</span>}</label>
                 <div className="input-prefix"><span>&#8377;</span>
-                  <input type="number" name="iprsAmount" value={formData.iprsAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+                  <input type="number" name="iprsAmount" value={formData.iprsAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly || !societyAccess['IPRS']?.editable} />
                 </div>
-                {!isReadOnly && (
+                {!isReadOnly && societyAccess['IPRS']?.editable && (
                   <button type="button" className="detail-open-btn" onClick={() => setIprsModalOpen(true)} title="Add detailed entries">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </button>
@@ -210,7 +276,7 @@ function BillingForm() {
             )}
             {formData.prsEntries?.length > 0 ? (
               <div className="input-group royalty-clickable" onClick={() => setPrsModalOpen(true)}>
-                <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span>
+                <label>PRS Amount (INR){societyAccess['PRS']?.required && <span style={{ color: '#ef4444' }}> *</span>}
                   <span className="click-hint">Click to view details</span>
                 </label>
                 <div className="input-prefix"><span>&#8377;</span>
@@ -220,47 +286,18 @@ function BillingForm() {
               </div>
             ) : (
               <div className="input-group" style={{ position: 'relative' }}>
-                <label>PRS Amount (INR) <span style={{color:'#ef4444'}}>*</span></label>
+                <label>PRS Amount (INR){societyAccess['PRS']?.required && <span style={{ color: '#ef4444' }}> *</span>}{!societyAccess['PRS']?.editable && <span className="not-member-tag">not a member</span>}{societyAccess['PRS']?.strayAmount && <span className="stray-tag">not in society list</span>}</label>
                 <div className="input-prefix"><span>&#8377;</span>
-                  <input type="number" name="prsAmount" value={formData.prsAmount} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly} />
+                  <input type="number" name="prsAmount" value={formData.prsAmount} onChange={handleInputChange} placeholder="0.00" step="0.01" disabled={isReadOnly || !societyAccess['PRS']?.editable} />
                 </div>
-                {!isReadOnly && (
+                {!isReadOnly && societyAccess['PRS']?.editable && (
                   <button type="button" className="detail-open-btn" onClick={() => setPrsModalOpen(true)} title="Add detailed entries">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                   </button>
                 )}
               </div>
             )}
-            <div className="input-group">
-              <label>Sound Exchange Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="soundExchangeAmount" value={formData.soundExchangeAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
-              </div>
-            </div>
-            <div className="input-group">
-              <label>ISAMRA Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="isamraAmount" value={formData.isamraAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
-              </div>
-            </div>
-            <div className="input-group">
-              <label>ASCAP Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="ascapAmount" value={formData.ascapAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
-              </div>
-            </div>
-            <div className="input-group">
-              <label>PPL Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="pplAmount" value={formData.pplAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
-              </div>
-            </div>
-            <div className="input-group">
-              <label>MLC Amount <span style={{color:'#ef4444'}}>*</span></label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="mlcAmount" value={formData.mlcAmount} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
-              </div>
-            </div>
+            {['Sound Exchange', 'ISAMRA', 'ASCAP', 'BMI', 'SOCAN', 'PPL', 'MLC'].map(renderSocietyAmount)}
           </div>
         </div>
 
@@ -274,48 +311,60 @@ function BillingForm() {
             </div>
             <div>
               <div className="section-title">Commission Calculation</div>
-              <div className="section-subtitle">Auto-calculated at {formData.commissionRate || 0}% commission rate</div>
+              <div className="section-subtitle">{commissionSubtitle}</div>
             </div>
           </div>
           <div className="input-grid">
             <div className="input-group calculated">
-              <label>IPRS Commission</label>
+              <label>IPRS Commission{isPerSociety && <span className="rate-chip">{rateFor('IPRS')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.iprsCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>PRS Commission</label>
+              <label>PRS Commission{isPerSociety && <span className="rate-chip">{rateFor('PRS')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.prsCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>Sound Exchange Commission</label>
+              <label>Sound Exchange Commission{isPerSociety && <span className="rate-chip">{rateFor('Sound Exchange')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.soundExchangeCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>ISAMRA Commission</label>
+              <label>ISAMRA Commission{isPerSociety && <span className="rate-chip">{rateFor('ISAMRA')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.isamraCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>ASCAP Commission</label>
+              <label>ASCAP Commission{isPerSociety && <span className="rate-chip">{rateFor('ASCAP')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.ascapCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>PPL Commission</label>
+              <label>BMI Commission{isPerSociety && <span className="rate-chip">{rateFor('BMI')}%</span>}</label>
+              <div className="input-prefix"><span>&#8377;</span>
+                <input type="number" value={calculations.bmiCommission.toFixed(2)} readOnly />
+              </div>
+            </div>
+            <div className="input-group calculated">
+              <label>SOCAN Commission{isPerSociety && <span className="rate-chip">{rateFor('SOCAN')}%</span>}</label>
+              <div className="input-prefix"><span>&#8377;</span>
+                <input type="number" value={calculations.socanCommission.toFixed(2)} readOnly />
+              </div>
+            </div>
+            <div className="input-group calculated">
+              <label>PPL Commission{isPerSociety && <span className="rate-chip">{rateFor('PPL')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.pplCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>MLC Commission</label>
+              <label>MLC Commission{isPerSociety && <span className="rate-chip">{rateFor('MLC')}%</span>}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.mlcCommission.toFixed(2)} readOnly />
               </div>
@@ -439,10 +488,34 @@ function BillingForm() {
             </div>
           </div>
           <div className="input-grid">
-            <div className="input-group">
-              <label>Previous Month Outstanding (Carry-Forward)</label>
+            <div className={`input-group${carryForwardLocked && !carryForwardOverride ? ' calculated' : ''}`}>
+              <label>
+                Previous Month Outstanding (Carry-Forward)
+                {carryForwardLocked && !carryForwardOverride && (
+                  <>
+                    <span className="not-member-tag">from last month</span>
+                    {!isReadOnly && (
+                      <button type="button" className="cf-link carry-override" onClick={unlockCarryForward}>
+                        Override
+                      </button>
+                    )}
+                  </>
+                )}
+                {carryForwardOverride && <span className="stray-tag">overridden</span>}
+              </label>
               <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" name="previousMonthOutstanding" value={formData.previousMonthOutstanding} onChange={handleInputChange} placeholder="0.00" disabled={isReadOnly} />
+                <input
+                  type="number"
+                  name="previousMonthOutstanding"
+                  value={formData.previousMonthOutstanding}
+                  onChange={handleInputChange}
+                  placeholder="0.00"
+                  readOnly={carryForwardLocked && !carryForwardOverride}
+                  disabled={isReadOnly}
+                  title={carryForwardLocked && !carryForwardOverride
+                    ? 'Carried forward from the previous month. Use Override to set a different opening balance.'
+                    : undefined}
+                />
               </div>
             </div>
             <div className="input-group">

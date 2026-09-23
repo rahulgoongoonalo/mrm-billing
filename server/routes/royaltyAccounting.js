@@ -79,11 +79,13 @@ router.get('/previous-outstanding/:clientId/:month', async (req, res) => {
         month: 'mar',
         year: prevFY.endYear
       });
-      return res.json({ totalOutstanding: marchEntry?.totalOutstanding || 0 });
+      // `exists` lets the form lock the carry-forward box: a month that has a
+      // predecessor never has its opening figure typed by hand.
+      return res.json({ totalOutstanding: marchEntry?.totalOutstanding || 0, exists: !!marchEntry });
     }
 
     if (currentMonthIndex < 0) {
-      return res.json({ totalOutstanding: 0 });
+      return res.json({ totalOutstanding: 0, exists: false });
     }
 
     const prevMonth = monthOrder[currentMonthIndex - 1];
@@ -95,7 +97,7 @@ router.get('/previous-outstanding/:clientId/:month', async (req, res) => {
       year: prevYear
     });
 
-    res.json({ totalOutstanding: entry?.totalOutstanding || 0 });
+    res.json({ totalOutstanding: entry?.totalOutstanding || 0, exists: !!entry });
   } catch (error) {
     console.error('Error fetching previous outstanding:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -281,33 +283,29 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Auto-fetch previous month outstanding if not explicitly provided
-    let previousMonthOutstanding = data.previousMonthOutstanding || 0;
-    if (!data.previousMonthOutstanding) {
-      if (currentMonthIndex === 0) {
-        // April: carry forward from previous FY's March
-        const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
-        const marchEntry = await RoyaltyAccounting.findOne({
-          clientId,
-          month: 'mar',
-          year: prevFY.endYear
-        });
-        if (marchEntry) {
-          previousMonthOutstanding = marchEntry.totalOutstanding;
-        }
-      } else if (currentMonthIndex > 0) {
-        const prevMonth = monthOrder[currentMonthIndex - 1];
-        const prevYear = getYearForMonth(prevMonth, financialYear);
-        const prevEntry = await RoyaltyAccounting.findOne({
-          clientId,
-          month: prevMonth,
-          year: prevYear
-        });
-        if (prevEntry) {
-          previousMonthOutstanding = prevEntry.totalOutstanding;
-        }
-      }
-    }
+    // The carried-forward figure is a link in the chain, not something the form
+    // gets to set: it is always the previous month's closing balance. The form
+    // holds whatever was loaded when the screen opened, so trusting it let a
+    // stale tab write an out-of-date opening figure back and break the chain.
+    //
+    // Only when no previous month exists is the submitted value used, which is
+    // how a client's opening balance is set on their very first entry.
+    // April carries forward from the previous financial year's March; every other
+    // month from the month before it.
+    const prevLookup = currentMonthIndex === 0
+      ? { clientId, month: 'mar', year: financialYear.startYear }
+      : {
+        clientId,
+        month: monthOrder[currentMonthIndex - 1],
+        year: getYearForMonth(monthOrder[currentMonthIndex - 1], financialYear),
+      };
+    // overrideCarryForward is set only when someone deliberately unlocks the box
+    // on the entry form, which is how an opening balance is seeded for a new
+    // financial year. Without it the previous month always wins.
+    const prevEntry = await RoyaltyAccounting.findOne(prevLookup);
+    const previousMonthOutstanding = (prevEntry && !data.overrideCarryForward)
+      ? prevEntry.totalOutstanding
+      : (data.previousMonthOutstanding || 0);
 
     const entryData = {
       clientId,
@@ -318,6 +316,13 @@ router.post('/', async (req, res) => {
       // Whatever the form sends is ignored so the two can never drift apart.
       royaltyType: client.type || data.royaltyType || '',
       commissionRate: data.commissionRate ?? 0,
+      // Commission mode and per-society rates are owned by the client record
+      // too, for the same reason as royaltyType: the monthly form must not be
+      // able to set a different rate structure for one month.
+      commissionMode: client.commissionMode || 'flat',
+      societyCommissions: client.commissionMode === 'per-society'
+        ? (client.societyCommissions || []).map(({ society, rate }) => ({ society, rate }))
+        : [],
       gstRate: data.gstRate ?? 18,
       iprsAmount: data.iprsAmount || 0,
       iprsEntries: data.iprsEntries || [],
@@ -327,6 +332,8 @@ router.post('/', async (req, res) => {
       soundExchangeAmount: data.soundExchangeAmount || 0,
       isamraAmount: data.isamraAmount || 0,
       ascapAmount: data.ascapAmount || 0,
+      bmiAmount: data.bmiAmount || 0,
+      socanAmount: data.socanAmount || 0,
       pplAmount: data.pplAmount || 0,
       mlcAmount: data.mlcAmount || 0,
       extraAmount: data.extraAmount || 0,

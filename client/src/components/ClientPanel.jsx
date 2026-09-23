@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { commissionSummary } from '../utils/clientProfile';
 
 function ClientPanel() {
   const { clients, selectedClient, selectClient, currentMonth, billingEntries, clientsLoading } = useApp();
@@ -62,7 +63,7 @@ function ClientPanel() {
                 onClick={() => selectClient(client)}
               >
                 <div className="client-name">{client.name}</div>
-                <div className="client-type">{client.type} • {client.commissionRate ?? (client.fee * 100).toFixed(0)}% Commission</div>
+                <div className="client-type">{client.type} • {commissionSummary(client)} Commission</div>
                 <div className="client-id">{client.clientId}</div>
               </div>
             );

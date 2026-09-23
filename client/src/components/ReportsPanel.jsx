@@ -11,6 +11,7 @@ import {
   SOCIETIES as CLIENT_SOCIETIES,
   societyClass as clientSocietyClass,
   profileOf,
+  commissionSummary,
   buildClientMasterCsv,
   downloadCsv,
 } from '../utils/clientProfile';
@@ -154,9 +155,14 @@ const DateRangeFilter = ({ dateFrom, dateTo, setDateFrom, setDateTo, clients, ex
   </div>
 );
 
-function ReportsPanel({ onClose }) {
-  const { clients, billingEntries, settings, updateClient, showToast } = useApp();
-  const [activeReport, setActiveReport] = useState('dashboard');
+// Renders the report pages. Two modes:
+//   embedded - the app shell owns the sidebar and passes the page to show
+//   standalone - the component draws its own sidebar in a full-screen overlay
+function ReportsPanel({ onClose, embedded = false, activeReport: activeReportProp }) {
+  const { clients, billingEntries, settings, updateClient, showToast, openModal } = useApp();
+  const [ownActiveReport, setOwnActiveReport] = useState('dashboard');
+  const activeReport = embedded ? activeReportProp : ownActiveReport;
+  const setActiveReport = setOwnActiveReport;
   const [editingClient, setEditingClient] = useState(null);
   const [addingClient, setAddingClient] = useState(false);
   const [masterSearch, setMasterSearch] = useState('');
@@ -1498,7 +1504,8 @@ function ReportsPanel({ onClose }) {
   ];
 
   return (
-    <div className="reports-overlay show">
+    <div className={embedded ? 'reports-embedded' : 'reports-overlay show'}>
+      {!embedded && (
       <div className="reports-sidebar">
         <div className="reports-sidebar-header">
           <div className="logo-row">
@@ -1544,6 +1551,7 @@ function ReportsPanel({ onClose }) {
 
         <Footer variant="sidebar" />
       </div>
+      )}
 
       <div className="reports-main">
         {/* Dashboard */}
@@ -1697,6 +1705,14 @@ function ReportsPanel({ onClose }) {
                   </svg>
                   Add Client
                 </button>
+                <button className="btn btn-danger" onClick={() => openModal('removeClient')}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7" r="4"></circle>
+                    <line x1="17" y1="11" x2="23" y2="11"></line>
+                  </svg>
+                  Remove Client
+                </button>
                 <button className="btn btn-primary" onClick={() => exportCSV('client-master')}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1791,7 +1807,9 @@ function ReportsPanel({ onClose }) {
                               </div>
                             ) : <span className="cm-missing">—</span>}
                           </td>
-                          <td><span className="amount highlight">{client.commissionRate ?? (client.fee * 100).toFixed(0)}%</span></td>
+                          <td>{client.commissionMode === 'per-society'
+                            ? <span className="cm-rate-split">{commissionSummary(client)}</span>
+                            : <span className="amount highlight">{client.commissionRate ?? (client.fee * 100).toFixed(0)}%</span>}</td>
                           <td className="cm-contact">
                             {phones.length ? (
                               <>{phones[0]}{phones.length > 1 && <span className="cm-more" title={phones.slice(1).join(', ')}>+{phones.length - 1}</span>}</>
