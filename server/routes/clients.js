@@ -26,12 +26,16 @@ function sendSaveError(res, error, action) {
 
 // Copy the client-master fields present in the request body onto the document.
 function applyProfileFields(client, body) {
-  const { clientType, societies, phone, email, gstId } = body;
+  const { clientType, societies, phone, email, gstId, commissionMode, societyCommissions } = body;
   if (clientType !== undefined) client.clientType = clientType;
   if (societies !== undefined) client.societies = Array.isArray(societies) ? societies : [];
   if (phone !== undefined) client.phone = phone;
   if (email !== undefined) client.email = email;
   if (gstId !== undefined) client.gstId = gstId;
+  if (commissionMode !== undefined) client.commissionMode = commissionMode;
+  if (societyCommissions !== undefined) {
+    client.societyCommissions = Array.isArray(societyCommissions) ? societyCommissions : [];
+  }
 }
 
 // Protect all client routes
@@ -162,10 +166,18 @@ router.put('/:id', async (req, res) => {
     const oldName = client.name;
     const oldType = client.type;
     const oldCommissionRate = client.commissionRate;
+    // Compared as a string so a reordered or reworded rate list is not mistaken
+    // for a change - re-saving every entry is expensive and marks them all edited.
+    const commissionKey = (c) => JSON.stringify([
+      c.commissionMode || 'flat',
+      (c.societyCommissions || []).map((r) => [r.society, Number(r.rate)]).sort(),
+    ]);
+    const oldCommissionKey = commissionKey(client);
     if (name) client.name = name;
     if (type && !sendsProfile) client.type = type;
     if (fee !== undefined) client.fee = parseFloat(fee);
     if (commissionRate !== undefined) client.commissionRate = parseFloat(commissionRate);
+    // commissionMode and societyCommissions are applied by applyProfileFields below.
     if (gstRate !== undefined && gstRate !== '') client.gstRate = parseFloat(gstRate);
     if (previousBalance !== undefined) client.previousBalance = previousBalance;
     if (!sendsProfile) {
@@ -199,7 +211,9 @@ router.put('/:id', async (req, res) => {
     // Cascade a commission rate change to all RoyaltyAccounting entries (in chronological order).
     // Only when the rate really changed - re-saving every entry for a phone edit would
     // re-chain outstanding balances and mark every month as edited today.
-    if (commissionRate !== undefined && client.commissionRate !== oldCommissionRate) {
+    const rateChanged = commissionRate !== undefined && client.commissionRate !== oldCommissionRate;
+    const structureChanged = commissionKey(client) !== oldCommissionKey;
+    if (rateChanged || structureChanged) {
       const entries = await RoyaltyAccounting.find({ clientId: req.params.id });
 
       // Chronological position: FY-apr = 0..FY-mar = 11.
@@ -213,7 +227,13 @@ router.put('/:id', async (req, res) => {
       // across month boundaries AND across FY boundaries (March -> next April).
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
-        entry.commissionRate = parseFloat(commissionRate);
+        if (rateChanged) entry.commissionRate = parseFloat(commissionRate);
+        // Re-snapshot the rate structure so each entry recomputes under the
+        // client's current setup.
+        entry.commissionMode = client.commissionMode || 'flat';
+        entry.societyCommissions = client.commissionMode === 'per-society'
+          ? (client.societyCommissions || []).map(({ society, rate }) => ({ society, rate }))
+          : [];
 
         if (i > 0) {
           const prevEntry = entries[i - 1];

@@ -1,4 +1,11 @@
 const mongoose = require('mongoose');
+const {
+  SOCIETIES,
+  SOCIETY_FIELDS,
+  COMMISSION_MODES,
+  DEFAULT_COMMISSION_MODE,
+  societyRate,
+} = require('../utils/clientProfile');
 
 const royaltyAccountingSchema = new mongoose.Schema({
   // Client & Period
@@ -14,6 +21,21 @@ const royaltyAccountingSchema = new mongoose.Schema({
 
   // Configurable Rates (UI Editable)
   commissionRate: { type: Number, default: 0 },
+  // Snapshot of the client's commission setup at the time this entry was saved,
+  // so an entry always recomputes with the rates it was invoiced under.
+  commissionMode: {
+    type: String,
+    enum: COMMISSION_MODES,
+    default: DEFAULT_COMMISSION_MODE
+  },
+  societyCommissions: {
+    type: [{
+      _id: false,
+      society: { type: String, enum: SOCIETIES, required: true },
+      rate: { type: Number, required: true, min: 0, max: 100 }
+    }],
+    default: []
+  },
   gstRate: { type: Number, default: 18 },
 
   // Royalty Amount Inputs (UI Editable)
@@ -38,6 +60,8 @@ const royaltyAccountingSchema = new mongoose.Schema({
   soundExchangeAmount: { type: Number, default: 0 },
   isamraAmount: { type: Number, default: 0 },
   ascapAmount: { type: Number, default: 0 },
+  bmiAmount: { type: Number, default: 0 },
+  socanAmount: { type: Number, default: 0 },
   pplAmount: { type: Number, default: 0 },
   mlcAmount: { type: Number, default: 0 },
   extraAmount: { type: Number, default: 0 },
@@ -48,6 +72,8 @@ const royaltyAccountingSchema = new mongoose.Schema({
   soundExchangeCommission: { type: Number, default: 0 },
   isamraCommission: { type: Number, default: 0 },
   ascapCommission: { type: Number, default: 0 },
+  bmiCommission: { type: Number, default: 0 },
+  socanCommission: { type: Number, default: 0 },
   pplCommission: { type: Number, default: 0 },
   mlcCommission: { type: Number, default: 0 },
   totalCommission: { type: Number, default: 0 },
@@ -104,26 +130,20 @@ function r(val) {
 
 // Compute all derived fields from input fields
 function computeFields(doc) {
-  const rate = (doc.commissionRate || 0) / 100;
-
   // 1. Commission Calculation
-  doc.iprsCommission = r((doc.iprsAmount || 0) * rate);
-  doc.prsCommission = r((doc.prsAmount || 0) * rate);
-  doc.soundExchangeCommission = r((doc.soundExchangeAmount || 0) * rate);
-  doc.isamraCommission = r((doc.isamraAmount || 0) * rate);
-  doc.ascapCommission = r((doc.ascapAmount || 0) * rate);
-  doc.pplCommission = r((doc.pplAmount || 0) * rate);
-  doc.mlcCommission = r((doc.mlcAmount || 0) * rate);
-
-  doc.totalCommission = r(
-    doc.iprsCommission +
-    doc.prsCommission +
-    doc.soundExchangeCommission +
-    doc.isamraCommission +
-    doc.ascapCommission +
-    doc.pplCommission +
-    doc.mlcCommission
-  );
+  //
+  // Each society is charged at its own rate. In flat mode - and for every entry
+  // saved before per-society rates existed, which have no commissionMode at all
+  // - societyRate() returns the single commissionRate for all of them, so the
+  // arithmetic is exactly what it was.
+  let totalCommission = 0;
+  for (const society of SOCIETIES) {
+    const { amount, commission } = SOCIETY_FIELDS[society];
+    const value = r((doc[amount] || 0) * (societyRate(doc, society) / 100));
+    doc[commission] = value;
+    totalCommission += value;
+  }
+  doc.totalCommission = r(totalCommission);
 
   // 2. GST Calculation
   const gstMultiplier = (doc.gstRate || 18) / 100;
@@ -226,3 +246,6 @@ royaltyAccountingSchema.statics.cascadeUpdate = async function (clientId, startM
 const RoyaltyAccounting = mongoose.model('RoyaltyAccounting', royaltyAccountingSchema, 'royaltyAccounting');
 
 module.exports = RoyaltyAccounting;
+// Pure function over a plain object - exported so scripts can recompute an
+// entry without writing it (see scripts/verifyCommissionParity.js).
+module.exports.computeFields = computeFields;

@@ -1,39 +1,10 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { AppProvider, useApp } from './contexts/AppContext';
-import Header from './components/Header';
-import MonthTabs from './components/MonthTabs';
-import Legend from './components/Legend';
-import ClientPanel from './components/ClientPanel';
-import BillingForm from './components/BillingForm';
-import Toast from './components/Toast';
-import Modals from './components/Modals';
-import ReportsPanel from './components/ReportsPanel';
+import { AppProvider } from './contexts/AppContext';
+import AppShell from './components/AppShell';
 import AuthModal from './components/AuthModal';
 import Footer from './components/Footer';
 import './styles/App.css';
-
-function AuthenticatedApp() {
-  const { activeModal, closeModal } = useApp();
-
-  return (
-    <>
-      <div className="container">
-        <Header />
-        <MonthTabs />
-        <Legend />
-        <div className="content-grid">
-          <ClientPanel />
-          <BillingForm />
-        </div>
-        <Toast />
-        <Modals />
-        <Footer />
-      </div>
-      {activeModal === 'reports' && <ReportsPanel onClose={closeModal} />}
-    </>
-  );
-}
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -61,7 +32,7 @@ function AppContent() {
   // Only load AppProvider after authentication
   return (
     <AppProvider>
-      <AuthenticatedApp />
+      <AppShell />
     </AppProvider>
   );
 }

@@ -3,6 +3,8 @@
 // (services/outstandingNotification.js) and the test script
 // (scripts/testOutstandingMail.js) so the test mail and the real mail are identical.
 
+const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
+
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const calMonthName = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -28,13 +30,7 @@ const calOrder = (e) => (e.year || 0) * 12 + (calMonthIdx[e.month] ?? -1);
 const hasActivity = (e) => {
   if (e.status === 'submitted') return true;
   return (
-    (e.iprsAmount || 0) !== 0 ||
-    (e.prsAmount || 0) !== 0 ||
-    (e.soundExchangeAmount || 0) !== 0 ||
-    (e.isamraAmount || 0) !== 0 ||
-    (e.ascapAmount || 0) !== 0 ||
-    (e.pplAmount || 0) !== 0 ||
-    (e.mlcAmount || 0) !== 0 ||
+    SOCIETIES.some((s) => (e[SOCIETY_FIELDS[s].amount] || 0) !== 0) ||
     (e.extraAmount || 0) !== 0 ||
     (e.currentMonthGstBase || 0) !== 0 ||
     (e.previousOutstandingGstBase || 0) !== 0 ||

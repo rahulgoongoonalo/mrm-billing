@@ -8,15 +8,13 @@
 
 const { calOrder, shortLabel, longLabel } = require('./statementBuilder');
 
-const SOCIETIES = [
-  ['iprsAmount', 'iprs'],
-  ['prsAmount', 'prs'],
-  ['soundExchangeAmount', 'soundExchange'],
-  ['isamraAmount', 'isamra'],
-  ['ascapAmount', 'ascap'],
-  ['pplAmount', 'ppl'],
-  ['mlcAmount', 'mlc'],
-];
+// [amount field, short key] per society, derived from the shared map.
+const { SOCIETIES: CLIENT_SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
+
+const SOCIETIES = CLIENT_SOCIETIES.map((s) => {
+  const field = SOCIETY_FIELDS[s].amount;
+  return [field, field.replace(/Amount$/, '')];
+});
 
 const n = (e, k) => e[k] || 0;
 const r2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
