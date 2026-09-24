@@ -110,7 +110,27 @@ const royaltyAccountingSchema = new mongoose.Schema({
 
   // Audit
   lastEditedByEmail: { type: String, default: '' },
-  lastEditedByUserId: { type: String, default: '' }
+  lastEditedByUserId: { type: String, default: '' },
+
+  // Every attempt to mail this month's statement to the client, successful or
+  // not, newest last. Kept on the entry so the All Entries screen can show what
+  // was sent and when without a second collection.
+  mailLog: {
+    type: [{
+      _id: false,
+      sentAt: { type: Date, default: Date.now },
+      to: { type: String, default: '' },
+      intendedTo: { type: String, default: '' },
+      subject: { type: String, default: '' },
+      ok: { type: Boolean, default: false },
+      isTest: { type: Boolean, default: true },
+      error: { type: String, default: '' },
+      byEmail: { type: String, default: '' }
+    }],
+    default: []
+  },
+  // Mirrors the last successful send so the list can sort and filter on it.
+  lastMailSentAt: { type: Date, default: null }
 }, {
   timestamps: true
 });
