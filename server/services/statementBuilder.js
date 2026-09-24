@@ -85,7 +85,7 @@ function pickWindow(rows) {
 // out of COMMISSION_SPLIT would drop its commission from the running balance and
 // the month would stop reconciling.
 const ROYALTY_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].amount, s]);
-const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, `MRM Service Fees – ${s}`]);
+const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, s]);
 
 /**
  * Build the statement. `mode` is 'window' (trimmed) or 'full' (every month).
@@ -141,7 +141,11 @@ function buildStatement(client, allRows, opts = 'window') {
   let prevEntry = start > 0 ? rows[start - 1] : null;
 
   for (const e of window) {
-    const items = [];
+    // Four ledger columns. fees, GST and payments move the balance; an
+    // invoice's base does not - it is the service fee already counted in fees.
+    const fees = [];
+    const invoices = [];
+    const payments = [];
 
     // A balance cannot be carried across months that are not held. Where the
     // record skips a month, the entry's own opening figure is the only truth
@@ -151,20 +155,29 @@ function buildStatement(client, allRows, opts = 'window') {
 
     // A stale carried-forward figure shows up as its own line so the column still adds up.
     const drift = r2(n(e, 'previousMonthOutstanding') - bal);
-    if (Math.abs(drift) > 0.005) items.push({ amount: drift, label: 'carry-forward correction' });
+    const adjustment = Math.abs(drift) > 0.005 ? drift : 0;
 
     for (const [key, label] of COMMISSION_SPLIT) {
-      if (n(e, key)) items.push({ amount: n(e, key), label });
+      if (n(e, key)) fees.push({ amount: n(e, key), label });
     }
-    if (n(e, 'currentMonthGst')) items.push({ amount: n(e, 'currentMonthGst'), label: 'GST on Current Invoice' });
-    if (n(e, 'previousOutstandingGst')) items.push({ amount: n(e, 'previousOutstandingGst'), label: 'GST on Earlier Invoices' });
+
+    const gstRate = n(e, 'gstRate') || 18;
+    for (const [label, baseKey, gstKey] of [
+      ['Current month invoice', 'currentMonthGstBase', 'currentMonthGst'],
+      ['Earlier invoices', 'previousOutstandingGstBase', 'previousOutstandingGst'],
+    ]) {
+      const base = n(e, baseKey);
+      const gst = n(e, gstKey);
+      if (base || gst) invoices.push({ label, base, gst, gstRate, total: r2(base + gst) });
+    }
 
     const receipts = n(e, 'currentMonthReceipt') + n(e, 'previousMonthReceipt');
     const tds = n(e, 'currentMonthTds') + n(e, 'previousMonthTds');
-    if (receipts) items.push({ amount: -receipts, label: 'Payment Received' });
-    if (tds) items.push({ amount: -tds, label: 'TDS Adjustment' });
+    if (receipts) payments.push({ amount: -receipts, label: 'Received' });
+    if (tds) payments.push({ amount: -tds, label: 'TDS' });
 
-    for (const it of items) bal = r2(bal + it.amount);
+    const moves = [{ amount: adjustment }, ...fees, ...invoices.map((i) => ({ amount: i.gst })), ...payments];
+    for (const it of moves) bal = r2(bal + it.amount);
 
     // Applied to the balance but deliberately not listed.
     const extra = n(e, 'extraAmount');
@@ -180,7 +193,13 @@ function buildStatement(client, allRows, opts = 'window') {
       royalty,
       royaltyTotal: r2(royalty.reduce((t, x) => t + x.amount, 0)),
       commission: n(e, 'totalCommission'),
-      items,
+      fees,
+      feeTotal: r2(fees.reduce((t, f) => t + f.amount, 0)),
+      adjustment,
+      invoices,
+      payments,
+      gstTotal: r2(invoices.reduce((t, i) => t + i.gst, 0)),
+      paidTotal: r2(payments.reduce((t, p) => t - p.amount, 0)),
       total: bal,
       stored: n(e, 'totalOutstanding'),
       reconciles: Math.abs(bal - n(e, 'totalOutstanding')) < 0.005,
@@ -189,7 +208,14 @@ function buildStatement(client, allRows, opts = 'window') {
   }
 
   const royaltyTotal = r2(lines.reduce((t, l) => t + l.royaltyTotal, 0));
+  // Per-society royalty over the whole statement, in the societies' usual order.
+  const royaltyBySociety = ROYALTY_SPLIT
+    .map(([, label]) => ({ label, amount: r2(lines.reduce((t, l) => t + (l.royalty.find((x) => x.label === label)?.amount || 0), 0)) }))
+    .filter((x) => x.amount);
   const commissionTotal = r2(lines.reduce((t, l) => t + l.commission, 0));
+  const feeTotal = r2(lines.reduce((t, l) => t + l.feeTotal, 0));
+  const gstTotal = r2(lines.reduce((t, l) => t + l.gstTotal, 0));
+  const paidTotal = r2(lines.reduce((t, l) => t + l.paidTotal, 0));
 
   return {
     clientId: client.clientId,
@@ -198,6 +224,7 @@ function buildStatement(client, allRows, opts = 'window') {
     gstId: client.gstId || '',
     email: client.email || '',
     phone: client.phone || '',
+    paymentAccount: client.paymentAccount || '',
     commissionRate: client.commissionRate,
     gstRate: n(window[0], 'gstRate') || 18,
     mode,
@@ -208,7 +235,11 @@ function buildStatement(client, allRows, opts = 'window') {
     periodTo: longLabel(window[window.length - 1]),
     lines,
     royaltyTotal,
+    royaltyBySociety,
     commissionTotal,
+    feeTotal,
+    gstTotal,
+    paidTotal,
     closing: bal,
     hiddenAdjustments,
     monthsShown: window.length,

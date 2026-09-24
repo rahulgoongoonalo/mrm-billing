@@ -164,7 +164,7 @@ router.get('/reports/outstanding-summary', async (req, res) => {
     }
 
     const clients = await Client.find({ isActive: { $ne: false } })
-      .select('clientId name type commissionRate createdAt').lean();
+      .select('clientId name type commissionRate paymentAccount createdAt').lean();
     const activeIds = new Set(clients.map((c) => c.clientId));
     const entries = (await RoyaltyAccounting.find({}).lean()).filter((e) => activeIds.has(e.clientId));
 
@@ -172,8 +172,10 @@ router.get('/reports/outstanding-summary', async (req, res) => {
 
     // Statement links are HMAC-signed, so only the server can build them.
     const base = serverUrl();
+    const payTo = new Map(clients.map((c) => [c.clientId, c.paymentAccount || '']));
     summary.rows = summary.rows.map((r) => ({
       ...r,
+      paymentAccount: payTo.get(r.clientId) || '',
       statementUrl: statementUrl(r.clientId, 'outstanding'),
       fullRecordUrl: statementUrl(r.clientId, 'full'),
       // base + token let the client build the period / year variants too

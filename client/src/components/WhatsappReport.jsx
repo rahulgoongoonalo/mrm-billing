@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
+import { PAYMENT_ACCOUNTS } from '../utils/paymentAccounts';
 
 const inr = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
 const inr0 = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.round(v || 0));
@@ -12,7 +13,7 @@ const Icon = ({ children, size = 16 }) => (
 );
 
 function WhatsappReport() {
-  const { settings, showToast } = useApp();
+  const { settings, showToast, updateClient } = useApp();
   const currentFy = settings?.financialYear?.startYear || new Date().getFullYear();
 
   const [data, setData] = useState(null);
@@ -26,6 +27,11 @@ function WhatsappReport() {
   const [pFrom, setPFrom] = useState('');
   const [pTo, setPTo] = useState('');
   const [pYear, setPYear] = useState(currentFy);
+
+  // A statement prints the client's bank details, so a client without a
+  // payment account is asked for one (and it is saved) before it opens.
+  const [payFor, setPayFor] = useState(null);     // { client, url }
+  const [savingPay, setSavingPay] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +128,31 @@ function WhatsappReport() {
     setPicker({ client, kind });
   };
 
+  const openStatement = (client, url) => {
+    if (client.paymentAccount) window.open(url, '_blank', 'noopener');
+    else setPayFor({ client, url });
+  };
+
+  const choosePayment = async (key) => {
+    const { client, url } = payFor;
+    // Opened before the save so the browser still counts it as a click, not a popup.
+    const win = window.open('about:blank', '_blank');
+    setSavingPay(true);
+    try {
+      await updateClient(client.clientId, { paymentAccount: key });
+      setData((d) => d && {
+        ...d,
+        rows: d.rows.map((r) => (r.clientId === client.clientId ? { ...r, paymentAccount: key } : r)),
+      });
+      if (win) { win.opener = null; win.location.href = url; } else window.open(url, '_blank', 'noopener');
+      setPayFor(null);
+    } catch {
+      if (win) win.close();
+    } finally {
+      setSavingPay(false);
+    }
+  };
+
   const openPicked = () => {
     if (!picker) return;
     const { client, kind } = picker;
@@ -129,8 +160,8 @@ function WhatsappReport() {
     const url = kind === 'period'
       ? `${out}&mode=period&from=${pFrom}&to=${pTo}`
       : `${out}&mode=year&year=${pYear}`;
-    window.open(url, '_blank', 'noopener');
     setPicker(null);
+    openStatement(client, url);
   };
 
   const kpis = [
@@ -249,8 +280,15 @@ function WhatsappReport() {
                         <td className={`r wa-out${r.outstanding > 0 ? '' : r.outstanding <= -1 ? ' wa-neg' : ' wa-zero'}`}>{inr(r.outstanding)}</td>
                         <td className="r">
                           <div className="wa-links">
-                            <a href={`${r.statementBase}/outstanding?t=${r.statementToken}`} target="_blank" rel="noreferrer">Balance build-up</a>
-                            <a href={`${r.statementBase}/full?t=${r.statementToken}`} target="_blank" rel="noreferrer">Full record</a>
+                            {[['outstanding', 'Balance build-up'], ['full', 'Full record']].map(([view, text]) => {
+                              const url = `${r.statementBase}/${view}?t=${r.statementToken}`;
+                              return (
+                                <a key={view} href={url} target="_blank" rel="noreferrer"
+                                  onClick={(e) => { if (!r.paymentAccount) { e.preventDefault(); openStatement(r, url); } }}>
+                                  {text}
+                                </a>
+                              );
+                            })}
                             <button type="button" onClick={() => openPicker(r, 'period')}>Period</button>
                             <button type="button" onClick={() => openPicker(r, 'year')}>Year</button>
                           </div>
@@ -307,6 +345,40 @@ function WhatsappReport() {
                   <button className="btn btn-primary" onClick={openPicked} disabled={picker.kind === 'period' && (!pFrom || !pTo)}>
                     Open statement
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {payFor && (
+            <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget && !savingPay) setPayFor(null); }}>
+              <div className="modal wa-modal" role="dialog" aria-modal="true" aria-label="Choose a payment account">
+                <div className="modal-header">
+                  <h3>Choose a payment account</h3>
+                  <button className="modal-close" onClick={() => setPayFor(null)} disabled={savingPay} aria-label="Close">
+                    <Icon size={20}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Icon>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <p className="wa-modal-client">
+                    <strong>{payFor.client.clientName}</strong>
+                    <span>{payFor.client.clientId}</span>
+                  </p>
+                  <p className="wa-modal-note" style={{ marginTop: 0 }}>
+                    This client has no payment account yet. Pick the bank details their statement should carry &mdash;
+                    it is saved to the client&rsquo;s profile, then the statement opens.
+                  </p>
+                  <div className="cf-mode-row" style={{ marginTop: 12 }}>
+                    {PAYMENT_ACCOUNTS.map((a) => (
+                      <button key={a.key} type="button" className="cf-mode" disabled={savingPay} onClick={() => choosePayment(a.key)}>
+                        <strong>{a.label}</strong>
+                        <span>{a.account}<br />{a.bank}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-secondary" onClick={() => setPayFor(null)} disabled={savingPay}>Cancel</button>
                 </div>
               </div>
             </div>
