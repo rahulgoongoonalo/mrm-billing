@@ -254,7 +254,7 @@ function page(st) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>${esc(st.clientId)} &middot; Royalty &amp; Service Fee Statement</title>
+<title>${esc(st.clientId)} - ${esc(st.clientName)} - Royalty &amp; Service Fee Statement</title>
 <style>${STYLE}</style></head><body><div class="wrap"><div class="card">
 
 <header class="mast">
@@ -315,7 +315,7 @@ ${controls()}
 function emptyPage(info) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
-<title>${esc(info.clientId)} &middot; Royalty &amp; Service Fee Statement</title><style>${STYLE}</style></head>
+<title>${esc(info.clientId)} - ${esc(info.clientName)} - Royalty &amp; Service Fee Statement</title><style>${STYLE}</style></head>
 <body><div class="wrap"><div class="card">
 <header class="mast">
   <div>
