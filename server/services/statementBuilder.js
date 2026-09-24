@@ -85,7 +85,7 @@ function pickWindow(rows) {
 // out of COMMISSION_SPLIT would drop its commission from the running balance and
 // the month would stop reconciling.
 const ROYALTY_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].amount, s]);
-const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, `${s} commission`]);
+const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, `MRM Service Fees – ${s}`]);
 
 /**
  * Build the statement. `mode` is 'window' (trimmed) or 'full' (every month).
@@ -156,13 +156,13 @@ function buildStatement(client, allRows, opts = 'window') {
     for (const [key, label] of COMMISSION_SPLIT) {
       if (n(e, key)) items.push({ amount: n(e, key), label });
     }
-    if (n(e, 'currentMonthGst')) items.push({ amount: n(e, 'currentMonthGst'), label: 'current GST bill' });
-    if (n(e, 'previousOutstandingGst')) items.push({ amount: n(e, 'previousOutstandingGst'), label: 'previous GST bill' });
+    if (n(e, 'currentMonthGst')) items.push({ amount: n(e, 'currentMonthGst'), label: 'GST on Current Invoice' });
+    if (n(e, 'previousOutstandingGst')) items.push({ amount: n(e, 'previousOutstandingGst'), label: 'GST on Earlier Invoices' });
 
     const receipts = n(e, 'currentMonthReceipt') + n(e, 'previousMonthReceipt');
     const tds = n(e, 'currentMonthTds') + n(e, 'previousMonthTds');
-    if (receipts) items.push({ amount: -receipts, label: 'invoice' });
-    if (tds) items.push({ amount: -tds, label: 'TDS' });
+    if (receipts) items.push({ amount: -receipts, label: 'Payment Received' });
+    if (tds) items.push({ amount: -tds, label: 'TDS Adjustment' });
 
     for (const it of items) bal = r2(bal + it.amount);
 
@@ -195,6 +195,9 @@ function buildStatement(client, allRows, opts = 'window') {
     clientId: client.clientId,
     clientName: client.name,
     clientType: client.type || '',
+    gstId: client.gstId || '',
+    email: client.email || '',
+    phone: client.phone || '',
     commissionRate: client.commissionRate,
     gstRate: n(window[0], 'gstRate') || 18,
     mode,
