@@ -16,6 +16,7 @@ const {
   missingSocietyRates,
   normalizeSocietyCommissions,
 } = require('../utils/clientProfile');
+const { PAYMENT_ACCOUNT_KEYS } = require('../utils/paymentAccounts');
 
 const clientSchema = new mongoose.Schema({
   clientId: {
@@ -76,6 +77,13 @@ const clientSchema = new mongoose.Schema({
       validator: isValidGstId,
       message: (props) => `Invalid GST ID "${props.value}" - expected 15 characters like 27AAPFU0939F1ZV`
     }
+  },
+  // Which MRM bank account this client pays into, printed on their statement:
+  // 'gst' (Samraj, HDFC) or 'non-gst' (Kangabeat, SBI). Empty until chosen.
+  paymentAccount: {
+    type: String,
+    enum: ['', ...PAYMENT_ACCOUNT_KEYS],
+    default: ''
   },
   fee: {
     type: Number,

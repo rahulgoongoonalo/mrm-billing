@@ -26,12 +26,13 @@ function sendSaveError(res, error, action) {
 
 // Copy the client-master fields present in the request body onto the document.
 function applyProfileFields(client, body) {
-  const { clientType, societies, phone, email, gstId, commissionMode, societyCommissions } = body;
+  const { clientType, societies, phone, email, gstId, commissionMode, societyCommissions, paymentAccount } = body;
   if (clientType !== undefined) client.clientType = clientType;
   if (societies !== undefined) client.societies = Array.isArray(societies) ? societies : [];
   if (phone !== undefined) client.phone = phone;
   if (email !== undefined) client.email = email;
   if (gstId !== undefined) client.gstId = gstId;
+  if (paymentAccount !== undefined) client.paymentAccount = paymentAccount || '';
   if (commissionMode !== undefined) client.commissionMode = commissionMode;
   if (societyCommissions !== undefined) {
     client.societyCommissions = Array.isArray(societyCommissions) ? societyCommissions : [];

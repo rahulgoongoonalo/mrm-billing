@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
+import { PAYMENT_ACCOUNTS } from '../utils/paymentAccounts';
 import {
   SOCIETIES,
   SOCIETY_FIELDS,
@@ -61,6 +62,7 @@ function ClientFormModal({ client, onClose }) {
     phone: client?.phone || '',
     email: client?.email || '',
     gstId: client?.gstId || '',
+    paymentAccount: client?.paymentAccount || '',
   }));
   const [customType, setCustomType] = useState(false);
   const [touched, setTouched] = useState({});
@@ -164,6 +166,7 @@ function ClientFormModal({ client, onClose }) {
       phone: normalizePhone(form.phone),
       email: normalizeEmail(form.email),
       gstId: normalizeGstId(form.gstId),
+      paymentAccount: form.paymentAccount,
     };
     setSaving(true);
     try {
@@ -393,6 +396,26 @@ function ClientFormModal({ client, onClose }) {
                 <Field id="cf-email" label="Email" error={shown('email')} hint="Separate several addresses (or phone numbers) with commas" wide>
                   <input id="cf-email" type="text" inputMode="email" value={form.email} onChange={set('email')} onBlur={touch('email', normalizeEmail)} placeholder="name@example.com" />
                 </Field>
+              </div>
+            </section>
+
+            <section className="cf-section">
+              <div className="cf-section-title">Payment account</div>
+              <div className="cf-hint">The bank details printed on this client&rsquo;s statement.</div>
+              <div className="cf-mode-row" role="radiogroup" aria-label="Payment account">
+                {PAYMENT_ACCOUNTS.map((a) => (
+                  <button
+                    key={a.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={form.paymentAccount === a.key}
+                    className={`cf-mode${form.paymentAccount === a.key ? ' on' : ''}`}
+                    onClick={() => setForm((f) => ({ ...f, paymentAccount: f.paymentAccount === a.key ? '' : a.key }))}
+                  >
+                    <strong>{a.label}</strong>
+                    <span>{a.account}<br />{a.bank}</span>
+                  </button>
+                ))}
               </div>
             </section>
           </div>
