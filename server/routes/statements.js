@@ -8,7 +8,6 @@ const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { buildStatement, verifyStatementToken } = require('../services/statementBuilder');
 const { PAYMENT_ACCOUNTS } = require('../utils/paymentAccounts');
-const { version: APP_VERSION } = require('../package.json');
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -31,160 +30,169 @@ const inr = (v) => {
 
 const STYLE = `
 :root{
-  --ink:#16202e; --muted:#6b7686; --faint:#98a2b3; --line:#e5eaf1; --hair:#eef2f7;
-  --navy:#1F3864; --blue:#2E6DA4; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#eceff4;
-  --green-bg:#eef7ef; --green-line:#cfe5d2;
+  --ink:#16202e; --muted:#5f6b7c; --faint:#98a2b3; --line:#e2e8f0; --hair:#edf1f6;
+  --navy:#1F3864; --blue:#2E6DA4; --gold:#b08d3c; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#e9edf3;
+  --tint:#f6f8fb;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font:14px/1.55 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
-  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  font:14px/1.5 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
 .wrap{max-width:1160px;margin:0 auto;padding:30px 18px 60px}
-.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;
-  box-shadow:0 1px 2px rgba(16,24,40,.05),0 12px 34px rgba(16,24,40,.07);overflow:hidden}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:4px;
+  box-shadow:0 1px 2px rgba(16,24,40,.05),0 14px 36px rgba(16,24,40,.08);overflow:hidden}
 
-/* masthead */
-.mast{display:flex;justify-content:space-between;gap:28px;flex-wrap:wrap;padding:26px 30px 22px}
-.brand{display:flex;align-items:center;gap:10px;margin-bottom:16px}
-.mark{width:34px;height:34px;border-radius:9px;background:var(--navy);color:#fff;
-  display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.5px}
-.brand span{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);font-weight:600}
-h1{margin:0;font-size:22px;font-weight:700;color:var(--navy);letter-spacing:-.3px}
-.ident{margin-top:5px;font-size:13px;color:var(--muted)}
+/* the page wrapper is a one-cell table so that, in print, the letterhead
+   (thead) and the footer spacer (tfoot) repeat on every page */
+.sheet{display:block;width:100%;border-collapse:collapse}
+.sheet>thead,.sheet>tbody,.sheet>tfoot,.sheet>*>tr,.sheet>*>tr>td{display:block;padding:0;border:none;background:none}
+.sheet>tfoot{display:none}
+.body{padding:0 34px}
+
+/* letterhead */
+.lh{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
+  padding:24px 34px 12px;border-bottom:2px solid var(--navy);position:relative;margin-bottom:3px}
+.lh::after{content:"";position:absolute;left:0;right:0;bottom:-5px;border-bottom:1px solid var(--gold)}
+.brand{display:flex;align-items:center;gap:11px}
+.mark{width:40px;height:40px;border-radius:4px;background:var(--navy);color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:700;letter-spacing:.8px}
+.brand b{display:block;font-size:17px;font-weight:700;color:var(--navy);letter-spacing:.2px;line-height:1.15}
+.brand small{display:block;margin-top:2px;font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold);font-weight:600}
+.lh-r{text-align:right}
+.lh-r b{display:block;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:var(--navy)}
+.lh-r span{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
+
+/* addressee + closing balance */
+.mast{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;padding:20px 0 16px}
+.to{font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:3px}
+h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2px;line-height:1.2}
+.ident{margin-top:4px;font-size:12.5px;color:var(--muted)}
 .ident .id{font-weight:600;color:var(--ink)}
-.terms{margin-top:3px;font-size:12px;color:var(--faint)}
-.balance{text-align:right;min-width:210px}
-.balance .cap{font-size:10.5px;text-transform:uppercase;letter-spacing:.9px;color:var(--faint);font-weight:600}
-.balance .amt{display:block;margin-top:4px;font-size:32px;font-weight:700;color:var(--navy);letter-spacing:-.8px;line-height:1.1}
+.terms{margin-top:2px;font-size:11.5px;color:var(--faint)}
+.contact{display:flex;flex-wrap:wrap;gap:4px 20px;margin:8px 0 0;padding:0}
+.contact div{display:flex;align-items:baseline;gap:6px;min-width:0}
+.contact dt{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
+.contact dd{margin:0;font-size:12px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.balance{text-align:right;min-width:220px;padding:12px 16px;border:1px solid var(--line);border-top:3px solid var(--navy);background:var(--tint)}
+.balance .cap{font-size:9.5px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);font-weight:600}
+.balance .amt{display:block;margin-top:3px;font-size:28px;font-weight:700;color:var(--navy);letter-spacing:-.6px;line-height:1.1}
 .balance .amt.zero{color:var(--green)}
-.balance .amt i,tfoot .tot i{font-style:normal;font-size:.55em;font-weight:600;color:var(--faint);margin-right:3px;letter-spacing:.3px}
-.balance .asat{margin-top:3px;font-size:11.5px;color:var(--muted)}
-.balance .cap{max-width:260px;margin-left:auto}
+.balance .amt i,.ctot i{font-style:normal;font-size:.5em;font-weight:600;color:var(--faint);margin-right:3px;letter-spacing:.3px}
+.balance .asat{margin-top:2px;font-size:11px;color:var(--muted)}
 
-/* stat strip */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-  border-top:1px solid var(--hair);border-bottom:1px solid var(--line)}
-.stat{padding:14px 30px;border-right:1px solid var(--hair)}
+/* summary strip */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border:1px solid var(--line);margin-bottom:10px}
+.stat{padding:9px 14px;border-right:1px solid var(--line)}
 .stat:last-child{border-right:none}
-.stat span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
-.stat b{display:block;margin-top:4px;font-size:16px;font-weight:700;color:var(--navy)}
+.stat span{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
+.stat b{display:block;margin-top:2px;font-size:15px;font-weight:700;color:var(--navy)}
 .stat.g b{color:var(--green)}
 .stat.b b{color:var(--blue)}
-.split{list-style:none;margin:8px 0 0;padding:6px 0 0;border-top:1px dashed var(--line);display:grid;gap:2px}
-.split li{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}
-.split li span{display:inline;font-size:12px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--muted)}
-.stat .split li b{display:inline;margin:0;font-size:12.5px;font-weight:600;color:var(--ink)}
+.split{list-style:none;margin:5px 0 0;padding:4px 0 0;border-top:1px dashed var(--line);display:grid;gap:1px}
+.split li{display:flex;justify-content:space-between;gap:12px}
+.stat .split li span{display:inline;font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;color:var(--muted)}
+.stat .split li b{display:inline;margin:0;font-size:11.5px;font-weight:600;color:var(--ink)}
 
-.bar{padding:12px 30px;background:#f7f9fc;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.bar{margin:0 -34px;padding:10px 34px;background:var(--tint);border-top:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
 .spacer{flex:1}
 .print{font:inherit;font-size:12.5px;font-weight:600;padding:8px 14px;border:1px solid var(--green);
-  border-radius:8px;background:var(--green);color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  border-radius:6px;background:var(--green);color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
 .print:hover{filter:brightness(1.1)}
-.why{margin:0;padding:12px 30px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line);background:#fcfdfe}
+.why{margin:8px 0;font-size:11.5px;color:var(--muted)}
 .why b{color:var(--navy)}
 
 /* ledger: month | royalty | service fees | invoices & GST | payments | balance */
-table{width:100%;border-collapse:collapse}
-thead th{position:sticky;top:0;z-index:2;background:var(--navy);color:#fff;font-size:10.5px;font-weight:600;
-  letter-spacing:.6px;text-transform:uppercase;text-align:left;padding:11px 14px;vertical-align:bottom;line-height:1.35}
-thead th.r{text-align:right}
-thead th small{display:block;font-size:9.5px;font-weight:500;letter-spacing:.3px;text-transform:none;opacity:.75}
-tbody td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
-tbody tr:nth-child(even) td{background:#fbfcfe}
-tbody tr:hover td{background:#f4f8fd}
-td+td{border-left:1px solid var(--hair)}
-td.mo{width:78px;white-space:nowrap;font-weight:700;color:var(--navy);font-size:13px}
-td.roy{width:170px}
-td.fee,td.pay{width:175px}
-td.tot{width:150px;text-align:right;font-weight:700;color:var(--navy);white-space:nowrap;font-size:14px}
-.adj{display:block;margin-top:3px;font-size:10.5px;font-weight:500;color:var(--faint);white-space:normal}
-.dash{display:block;text-align:right;color:var(--faint)}
-.none{color:var(--faint);font-style:italic;font-size:12.5px}
+.led{width:100%;border-collapse:collapse;border:1px solid var(--line)}
+.led thead th{position:sticky;top:0;z-index:2;background:var(--navy);color:#fff;font-size:10px;font-weight:600;
+  letter-spacing:.5px;text-transform:uppercase;text-align:left;padding:8px 10px;vertical-align:bottom;line-height:1.3}
+.led thead th.r{text-align:right}
+.led thead th small{display:block;font-size:9px;font-weight:500;letter-spacing:.2px;text-transform:none;opacity:.75}
+.led tbody td{padding:7px 10px;border-bottom:1px solid var(--hair);vertical-align:top}
+.led tbody tr:nth-child(even) td{background:#fafbfd}
+.led tbody tr:hover td{background:#f4f8fd}
+.led td+td{border-left:1px solid var(--hair)}
+.led td.mo{width:70px;white-space:nowrap;font-weight:700;color:var(--navy);font-size:12.5px}
+.led td.roy{width:160px}
+.led td.fee,.led td.pay{width:170px}
+.led td.tot{width:140px;text-align:right;font-weight:700;color:var(--navy);white-space:nowrap;font-size:13px}
+.adj{display:block;margin-top:2px;font-size:10px;font-weight:500;color:var(--faint);white-space:normal}
+.dash{display:block;text-align:right;color:#c3cad5}
+.none{color:var(--faint);font-style:italic;font-size:12px}
 
 /* royalty cell */
-.rt{display:block;text-align:right;font-size:14px;font-weight:700;color:var(--blue)}
-.rb{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px}
-.rb li{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--faint)}
+.rt{display:block;text-align:right;font-size:13px;font-weight:700;color:var(--blue)}
+.rb{list-style:none;margin:3px 0 0;padding:0;display:grid;gap:1px}
+.rb.one{display:none}
+.rb li{display:flex;justify-content:space-between;gap:10px;font-size:10.5px;color:var(--faint)}
 .rb li b{font-weight:600;color:var(--muted)}
 
 /* label ....... amount lines, shared by fees / invoices / payments */
-.ln{list-style:none;margin:0;padding:0;display:grid;gap:4px}
-.ln li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;color:var(--muted)}
-.ln li b{font-weight:600;font-size:13px;white-space:nowrap;color:var(--ink)}
+.ln{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.ln li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:11.5px;color:var(--muted)}
+.ln li b{font-weight:600;font-size:12.5px;white-space:nowrap;color:var(--ink)}
 .ln li.info b{font-weight:500;color:var(--muted)}
-.ln li.sum{padding-top:4px;border-top:1px dashed var(--line)}
-.inv+.inv{margin-top:10px;padding-top:10px;border-top:1px solid var(--hair)}
-.inv-h{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+.ln li.sum{padding-top:3px;border-top:1px dashed var(--line)}
+.inv+.inv{margin-top:6px;padding-top:6px;border-top:1px solid var(--hair)}
+.inv-h{font-size:9.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin-bottom:2px}
 .up,.ln li b.up{color:var(--green)}
 .dn,.ln li b.dn{color:var(--red)}
 
-tfoot td{background:#dfe6f1;border-top:2px solid var(--navy);font-weight:700;color:var(--navy);padding:12px 14px;vertical-align:middle}
-tfoot tr.sums td{text-align:right;font-size:13.5px}
-tfoot tr.sums td.mo{text-align:left}
-tfoot tr.sums td.roy{color:var(--blue)}
-tfoot tr.close td{border-top:1px solid #c9d4e5;background:#d3dcea}
-tfoot .lead{font-size:13px;text-align:right}
-tfoot .ctot{margin-left:16px;font-size:17px;white-space:nowrap}
-tfoot .ctot i{font-style:normal;font-size:.55em;font-weight:600;color:var(--faint);margin-right:3px;letter-spacing:.3px}
+.led tfoot td{background:#e3e9f2;border-top:2px solid var(--navy);font-weight:700;color:var(--navy);padding:9px 10px;vertical-align:middle}
+.led tfoot tr.sums td{text-align:right;font-size:13px}
+.led tfoot tr.sums td.mo{text-align:left}
+.led tfoot tr.sums td.roy{color:var(--blue)}
+.led tfoot tr.close td{border-top:1px solid #c9d4e5;background:var(--navy);color:#fff}
+.led tfoot .lead{font-size:12.5px;text-align:right}
+.ctot{margin-left:16px;font-size:17px;white-space:nowrap}
+.led tfoot tr.close .ctot i{color:rgba(255,255,255,.6)}
 
-.note{margin:20px 30px 24px;padding:16px 20px;background:var(--green-bg);border:1px solid var(--green-line);
-  border-radius:10px;font-size:12.5px;color:#2c4a30;line-height:1.65}
-.note b{color:var(--green)}
-.note p{margin:0}
-.note-h{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--green);margin-bottom:6px}
-.note ul{margin:0;padding-left:18px;display:grid;gap:4px}
-.note li::marker{color:var(--green)}
-.note b.up{color:var(--green)}.note b.dn{color:var(--red)}
-.bank{margin:0 30px 20px;border:1px solid var(--line);border-radius:10px;overflow:hidden;page-break-inside:avoid}
+/* remittance details */
+.bank{margin:16px 0 0;border:1px solid var(--line);page-break-inside:avoid;break-inside:avoid}
 .bank-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
-  padding:11px 18px;background:var(--navy);color:#fff}
-.bank-h b{font-size:12px;letter-spacing:.8px;text-transform:uppercase}
-.bank-h span{font-size:11.5px;opacity:.8}
-.bank dl{margin:0;padding:6px 18px 10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 28px}
-.bank dl div{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--hair);min-width:0}
-.bank dt{flex:0 0 132px;font-size:11.5px;color:var(--muted)}
-.bank dd{margin:0;font-size:13px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+  padding:7px 14px;background:var(--tint);border-bottom:1px solid var(--line)}
+.bank-h b{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--navy)}
+.bank-h span{font-size:11px;color:var(--muted)}
+.bank dl{margin:0;padding:3px 14px 6px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 28px}
+.bank dl div{display:flex;gap:12px;padding:4px 0;border-bottom:1px solid var(--hair);min-width:0}
+.bank dt{flex:0 0 120px;font-size:11px;color:var(--muted)}
+.bank dd{margin:0;font-size:12px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .bank .wide{grid-column:1/-1}
-.pick{padding:26px 30px 30px}
+.acc{margin:12px 0 0;padding:0 0 22px;font-size:12px;color:var(--muted)}
+.acc b{color:var(--navy)}
+.acc a{color:var(--blue);font-weight:600;text-decoration:none;white-space:nowrap}
+
+/* running footer: sits at the foot of the card on screen, of every page in print */
+.lf{display:flex;justify-content:space-between;gap:12px;margin:0 34px;padding:9px 0 14px;border-top:1px solid var(--line);
+  font-size:10px;letter-spacing:.4px;color:var(--faint)}
+.lf b{color:var(--navy);font-weight:600}
+.frame{display:none}
+
+.pick{padding:22px 0 28px}
 .pick h2{margin:0 0 4px;font-size:17px;color:var(--navy)}
 .pick>p{margin:0 0 18px;color:var(--muted);font-size:13px}
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.pick-card{display:block;padding:16px 18px;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit;
+.pick-card{display:block;padding:16px 18px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:inherit;
   background:#fbfcfe;transition:border-color .15s,box-shadow .15s}
 .pick-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(46,109,164,.12)}
 .pick-card b{display:block;font-size:15px;color:var(--navy)}
 .pick-card span{display:block;margin-top:4px;font-size:12.5px;color:var(--muted)}
 .pick-card em{display:inline-block;margin-top:12px;font-style:normal;font-size:12.5px;font-weight:600;color:var(--blue)}
-.acc{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 20px;
-  margin:0 30px 24px;padding:13px 20px;border:1px solid var(--line);border-left:3px solid var(--navy);border-radius:10px;background:#f7f9fc}
-.acc-cap{font-size:12px;color:var(--muted)}
-.acc-who{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;font-size:13.5px}
-.acc-who b{color:var(--navy)}
-.acc-who a{color:var(--blue);font-weight:600;text-decoration:none;white-space:nowrap}
-.contact{display:flex;flex-wrap:wrap;gap:6px 24px;margin:12px 0 0;padding:0}
-.contact div{display:flex;align-items:baseline;gap:7px;min-width:0}
-.contact dt{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
-.contact dd{margin:0;font-size:12.5px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.ft{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px;font-size:11.5px;color:var(--faint)}
-.ft b{color:var(--muted)}
-.ft .v{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
-.empty{padding:48px 30px;text-align:center;color:var(--muted)}
+.empty{padding:40px 0;text-align:center;color:var(--muted)}
 
 @media(max-width:820px){
   .wrap{padding:16px 12px 40px}
-  .mast{padding:22px 18px;gap:18px}.stat{padding:12px 18px}.bar,.why{padding-left:18px;padding-right:18px}
-  .note{margin:16px 18px 20px}
-  .acc{margin:0 18px 20px}
-  .bank{margin:0 18px 20px}
-  .pick{padding:22px 18px 26px}
+  .lh{padding:18px 18px 10px}
+  .body{padding:0 18px}
+  .bar{margin:0 -18px;padding:10px 18px}
+  .lf{margin:0 18px}
   .balance{text-align:left;min-width:0}
-  .balance .cap{margin-left:0}
 }
 /* narrow screens that still show the table: let it scroll sideways rather than squash */
 @media screen and (min-width:641px) and (max-width:980px){
   .scroll{overflow-x:auto}
-  .scroll table{min-width:900px}
-  thead th{position:static}
+  .scroll .led{min-width:900px}
+  .led thead th{position:static}
 }
 /* phones: each month becomes a compact card - month and balance on top,
    then the transactions as a receipt (label left, amount right), then royalty */
@@ -192,96 +200,120 @@ tfoot .ctot i{font-style:normal;font-size:.55em;font-weight:600;color:var(--fain
   body{font-size:13px}
   .wrap{padding:0 0 28px}
   .card{border-radius:0;border-left:none;border-right:none;box-shadow:none}
-  .mast{padding:18px 16px 16px}
-  .brand{margin-bottom:12px}
+  .lh{padding:16px 16px 10px;align-items:center}
+  .lh-r span,.brand small{display:none}
+  .lh-r b{font-size:10px;letter-spacing:1px}
+  .brand b{font-size:14px}
+  .mark{width:34px;height:34px;font-size:10px}
+  .body{padding:0 16px}
+  .bar{margin:0 -16px;padding:10px 16px}.bar .spacer{display:none}.print{flex:1;justify-content:center;padding:10px 14px}
+  .lf{margin:0 16px;flex-direction:column;gap:2px}
   h1{font-size:19px}
-  .contact{flex-direction:column;gap:3px;margin-top:10px}
-  .balance{width:100%;padding:12px 14px;background:#f3f6fb;border:1px solid var(--line);border-radius:10px}
-  .balance .amt{font-size:26px}
+  .contact{flex-direction:column;gap:3px}
+  .balance{width:100%}
+  .balance .amt{font-size:25px}
   .stats{grid-template-columns:1fr 1fr}
-  .stat{padding:10px 16px;border-bottom:1px solid var(--hair)}
+  .stat{border-bottom:1px solid var(--line)}
   .stat:nth-child(2n){border-right:none}
-  .stat b{font-size:14.5px}
-  .bar{padding:10px 16px}.bar .spacer{display:none}.print{flex:1;justify-content:center;padding:10px 14px}
-  .why{padding:10px 16px;font-size:12px}
+  .stat b{font-size:14px}
 
-  table,tbody,tfoot,tr,td{display:block;width:auto}
-  thead{display:none}
-  tbody tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"mo tot" "fee fee" "inv inv" "pay pay" "roy roy" "quiet quiet";
+  .led,.led tbody,.led tfoot,.led tr,.led td{display:block;width:auto}
+  .led{border:none;margin:0 -16px}
+  .led thead{display:none}
+  .led tbody tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"mo tot" "fee fee" "inv inv" "pay pay" "roy roy" "quiet quiet";
     align-items:center;column-gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
-  tbody tr:nth-child(even){background:none}
-  tbody td,tbody tr:nth-child(even) td,tbody tr:hover td,tfoot td{padding:0;border:none;background:none;width:auto}
-  td.mo{grid-area:mo;font-size:14px}
-  td.tot{grid-area:tot;font-size:15px;line-height:1.25}
-  td.tot::before{content:attr(data-label);display:block;font-size:9.5px;font-weight:600;letter-spacing:.5px;
+  .led tbody tr:nth-child(even){background:none}
+  .led tbody td,.led tbody tr:nth-child(even) td,.led tbody tr:hover td,.led tfoot td{padding:0;border:none;background:none;width:auto}
+  .led td.mo{grid-area:mo;font-size:14px}
+  .led td.tot{grid-area:tot;font-size:15px;line-height:1.25}
+  .led td.tot::before{content:attr(data-label);display:block;font-size:9.5px;font-weight:600;letter-spacing:.5px;
     text-transform:uppercase;color:var(--faint)}
-  td.fee{grid-area:fee}td.inv{grid-area:inv}td.pay{grid-area:pay}td.quiet{grid-area:quiet;margin-top:6px}
-  td.fee,td.inv,td.pay{margin-top:9px}
-  td.fee::before,td.inv::before,td.pay::before{content:attr(data-label);display:block;margin-bottom:3px;font-size:9.5px;
+  .led td.fee{grid-area:fee}.led td.inv{grid-area:inv}.led td.pay{grid-area:pay}.led td.quiet{grid-area:quiet;margin-top:6px}
+  .led td.fee,.led td.inv,.led td.pay{margin-top:9px}
+  .led td.fee::before,.led td.inv::before,.led td.pay::before{content:attr(data-label);display:block;margin-bottom:3px;font-size:9.5px;
     font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--faint)}
-  td.nil{display:none}
+  .led td.nil{display:none}
   .ln li{font-size:12.5px}
-  tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:7px;background:#f1f6fc}
-  td.roy::before{content:attr(data-label);float:left;font-size:11.5px;color:var(--muted)}
+  .led tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:6px;background:#f1f6fc}
+  .led td.roy::before{content:attr(data-label);float:left;font-size:11.5px;color:var(--muted)}
   .rt{font-size:13px}
   .rb{margin-top:4px;clear:both}
-  .rb.one{display:none}
 
-  tfoot tr{display:block;padding:12px 16px;background:#dfe6f1;border-top:2px solid var(--navy)}
-  tr:nth-child(n) td{width:auto}
-  tfoot tr.sums{display:grid;grid-template-columns:1fr;grid-template-areas:none;gap:6px}
-  tfoot tr.sums td,tfoot tr:nth-child(n) td.roy{grid-area:auto;display:flex;justify-content:space-between;align-items:baseline;
+  .led tfoot tr{display:block;padding:12px 16px;background:#e3e9f2;border-top:2px solid var(--navy)}
+  .led tr:nth-child(n) td{width:auto}
+  .led tfoot tr.sums{display:grid;grid-template-columns:1fr;grid-template-areas:none;gap:6px}
+  .led tfoot tr.sums td,.led tfoot tr:nth-child(n) td.roy{grid-area:auto;display:flex;justify-content:space-between;align-items:baseline;
     gap:12px;margin:0;padding:0;border-radius:0;background:none;font-size:13px;text-align:right}
-  tfoot tr.sums td.roy::before{float:none}
-  tfoot tr.sums td::before{content:attr(data-label);font-weight:600;color:var(--muted);font-size:12px}
-  tfoot tr.sums td.mo,tfoot tr.sums td.blank{display:none}
-  tfoot tr.close{border-top:1px solid #c9d4e5;background:#d3dcea}
-  tfoot td.lead{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:12.5px;line-height:1.35}
-  tfoot .ctot{margin-left:0;flex:none;font-size:17px}
-  .note{margin:14px 12px 18px;padding:13px 14px;font-size:12px}
-  .acc{margin:0 12px 18px;padding:12px 14px;flex-direction:column;align-items:flex-start}
-  .bank{margin:0 12px 16px}
-  .bank-h{padding:10px 14px}
-  .bank dl{grid-template-columns:1fr;padding:4px 14px 8px}
-  .bank dt{flex-basis:118px}
+  .led tfoot tr.sums td.roy::before{float:none}
+  .led tfoot tr.sums td::before{content:attr(data-label);font-weight:600;color:var(--muted);font-size:12px}
+  .led tfoot tr.sums td.mo,.led tfoot tr.sums td.blank{display:none}
+  .led tfoot tr.close{border-top:none;background:var(--navy)}
+  .led tfoot td.lead{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:12.5px;line-height:1.35}
+  .ctot{margin-left:0;flex:none;font-size:17px}
+  .bank dl{grid-template-columns:1fr}
+  .bank dt{flex-basis:110px}
 }
-@page{size:A4 portrait;margin:12mm 10mm}
+
+/* Print: the page margin is zero so the browser adds no URL / date header or
+   footer; the border, letterhead and footer are drawn by the page itself. */
+@page{size:A4 portrait;margin:0}
 @media print{
-  body{background:#fff;font-size:12px}
-  /* A4 is ~720px wide: let everything wrap and shrink so nothing spills past the right edge */
-  thead th{padding:8px 8px;font-size:8.5px;letter-spacing:.4px}
-  thead th small{font-size:8px}
-  tbody td,tfoot td{padding:8px}
-  td.mo{width:48px;font-size:11.5px}
-  td.roy{width:106px}
-  td.fee,td.pay{width:112px}
-  td.tot{width:96px;font-size:12px}
-  .rt{font-size:12px}
-  .rb li{font-size:9.5px}
-  .ln{gap:2px}
-  .ln li{font-size:10px;gap:6px}
-  .ln li b{font-size:11px}
-  .inv-h{font-size:9px}
-  .none{font-size:11px}
-  tfoot tr.sums td{font-size:11.5px}
-  tfoot .ctot{font-size:15px}
-  .mast,.stat,.why{padding-left:16px;padding-right:16px}
-  .note{margin:16px}
-  .acc{margin:0 16px 16px;page-break-inside:avoid}
-  .bank{margin:0 16px 14px}
-  .bank-h{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .balance .amt{font-size:26px}
+  body{background:#fff;font-size:11px}
   .wrap{max-width:none;padding:0}
-  .card{box-shadow:none;border:none;border-radius:0}
+  .card{box-shadow:none;border:none;border-radius:0;overflow:visible}
   .bar{display:none}
-  thead th{position:static}
-  tbody tr:nth-child(even) td{background:#fbfcfe}
-  tr{page-break-inside:avoid}
-  thead{display:table-header-group}
+
+  .frame{display:block;position:fixed;top:6mm;left:6mm;right:6mm;bottom:6mm;border:3px double var(--navy);pointer-events:none}
+  .sheet{display:table}
+  .sheet>thead{display:table-header-group}
+  .sheet>tbody{display:table-row-group}
+  .sheet>tfoot{display:table-footer-group}
+  .sheet>*>tr{display:table-row}
+  .sheet>*>tr>td{display:table-cell}
+  .sheet>tfoot td{height:16mm}
+  .lh{margin:10mm 12mm 3px;padding:0 0 8px}
+  .body{padding:0 12mm}
+  .lf{position:fixed;left:12mm;right:12mm;bottom:8.5mm;margin:0;padding:5px 0 0}
+
+  .mast{padding:12px 0 10px}
+  h1{font-size:18px}
+  .balance{padding:8px 12px}
+  .balance .amt{font-size:22px}
+  .stat{padding:6px 10px}
+  .stat b{font-size:13px}
+  .why{margin:6px 0;font-size:10px}
+
+  /* A4 is ~700px wide inside the border: let everything wrap and shrink */
+  .led thead th{position:static;padding:6px 6px;font-size:8px;letter-spacing:.3px}
+  .led thead th small{font-size:7.5px}
+  .led tbody td,.led tfoot td{padding:4px 6px}
+  .led td.mo{width:44px;font-size:10.5px}
+  .led td.roy{width:104px}
+  .led td.fee,.led td.pay{width:112px}
+  .led td.tot{width:92px;font-size:11px}
+  .led tbody tr:hover td{background:inherit}
+  .rt{font-size:11px}
+  .rb li{font-size:8.5px}
+  .ln{gap:1px}
+  .ln li{font-size:9.5px;gap:6px;line-height:1.35}
+  .ln li b{font-size:10.5px}
+  .inv-h{font-size:8px;margin-bottom:0}
+  .none{font-size:10px}
+  .led tfoot tr.sums td{font-size:11px}
+  .ctot{font-size:14px}
+  .led thead{display:table-header-group}
+  .led tr{page-break-inside:avoid;break-inside:avoid}
   /* the closing total must print once, after the last month - never repeated
      at the foot of every page, where it would read as the end of the statement */
-  tfoot{display:table-row-group}
-  .ft{margin-top:14px}
+  .led tfoot{display:table-row-group}
+  .bank{margin-top:8px}
+  .bank-h{padding:4px 10px}
+  .bank-h b{font-size:9.5px}.bank-h span{font-size:9.5px}
+  .bank dl{padding:1px 10px 3px}
+  .bank dl div{padding:2px 0;gap:8px}
+  .bank dt{flex-basis:92px;font-size:9.5px}
+  .bank dd{font-size:10.5px}
+  .acc{margin-top:6px;padding-bottom:0;font-size:10.5px}
 }
 `;
 
@@ -298,11 +330,31 @@ function controls() {
 }
 
 const ROY = 'Royalties Received by You';
-const ACCOUNTS = { name: 'Pallavi Shailesh Ninave', phone: '+91 90825 63873' };
+const ACCOUNTS = { name: 'Pallavi', phone: '+91 90825 63873' };
 const BAL = 'Month-End Balance Payable';
 const FEE = 'MRM Service Fees';
 const INV = 'Invoices &amp; GST';
 const PAY = 'Payments Received by MRM';
+
+// Letterhead, repeated at the top of every printed page.
+function letterhead(name, id) {
+  return `<header class="lh">
+  <div class="brand"><div class="mark">MRM</div><div><b>Samraj Music Rights Management</b><small>Royalty &amp; Service Fee Statement</small></div></div>
+  <div class="lh-r"><b>Statement of Account</b><span>${esc(name)} &middot; ${esc(id)}</span></div>
+</header>`;
+}
+
+// Wraps a page's content so the letterhead and footer carry over onto every
+// printed page, inside a border drawn on each sheet.
+function sheet(name, id, content, foot = '') {
+  return `<div class="frame" aria-hidden="true"></div>
+<table class="sheet" role="presentation">
+<thead><tr><td>${letterhead(name, id)}</td></tr></thead>
+<tfoot><tr><td></td></tr></tfoot>
+<tbody><tr><td><div class="body">${content}</div></td></tr></tbody>
+</table>
+<footer class="lf"><span><b>Samraj Music Rights Management</b></span><span>${foot}</span></footer>`;
+}
 
 function bankBlock(key) {
   const acct = PAYMENT_ACCOUNTS[key];
@@ -332,19 +384,12 @@ function choosePage(client, url) {
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
 <title>${esc(client.clientId)} - ${esc(client.name)} - Royalty &amp; Service Fee Statement</title><style>${STYLE}</style></head>
 <body><div class="wrap"><div class="card">
-<header class="mast">
-  <div>
-    <div class="brand"><div class="mark">MRM</div><span>Music Rights Management</span></div>
-    <h1>${esc(client.name)}</h1>
-    <div class="ident"><span class="id">${esc(client.clientId)}</span></div>
-  </div>
-</header>
-<div class="pick">
+${sheet(client.name, client.clientId, `<div class="pick">
   <h2>Select the payment account</h2>
   <p>This client has no payment account on their profile yet. Choose which bank details the statement should carry.</p>
   <div class="pick-grid">${cards}</div>
-</div>
-</div><p class="ft">Developed and maintained by <b>RDJ(MRM)</b><span class="v">v${APP_VERSION}</span></p></div></body></html>`;
+</div>`)}
+</div></div></body></html>`;
 }
 
 function page(st) {
@@ -364,7 +409,7 @@ function page(st) {
     // The base is the service fee already counted, so it is shown without a
     // sign; only the GST on it moves the balance.
     const invs = l.invoices.map((i) => `<div class="inv"><div class="inv-h">${esc(i.label)}</div><ul class="ln">
-      ${info('Invoice base', i.base)}
+      ${info('Service Fees Before GST', i.base)}
       ${line(`GST ${i.gstRate}%`, i.gst)}
       ${info('Invoice total', i.total, 'info sum')}
     </ul></div>`).join('');
@@ -390,10 +435,10 @@ function page(st) {
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(st.clientId)} - ${esc(st.clientName)} - Royalty &amp; Service Fee Statement</title>
 <style>${STYLE}</style></head><body><div class="wrap"><div class="card">
-
-<header class="mast">
+${sheet(st.clientName, st.clientId, `
+<section class="mast">
   <div>
-    <div class="brand"><div class="mark">MRM</div><span>Music Rights Management</span></div>
+    <div class="to">Statement for</div>
     <h1>${esc(st.clientName)}</h1>
     <div class="ident"><span class="id">${esc(st.clientId)}</span> &middot; ${esc(st.clientType.replace(/\s+[–-]\s+/, ' : '))}</div>
     <div class="terms">MRM Service Fee Rate: ${esc(st.commissionRate)}% &middot; GST ${esc(st.gstRate)}% &middot; all figures in Rupees</div>
@@ -404,7 +449,7 @@ function page(st) {
     <span class="amt${Math.abs(st.closing) < 1 ? ' zero' : ''}"><i>Rs.</i> ${inr(st.closing)}</span>
     <div class="asat">as at ${esc(st.periodTo)}</div>
   </div>
-</header>
+</section>
 
 <div class="stats">
   <div class="stat b"><span>${ROY}${st.royaltyBySociety.length === 1 ? ` &middot; ${esc(st.royaltyBySociety[0].label)}` : ''}</span><b>${inr(st.royaltyTotal)}</b>${
@@ -419,7 +464,7 @@ function page(st) {
 ${controls()}
 <p class="why"><b>${esc(st.mode === 'full' ? 'Full record' : 'How this balance was built')}:</b> ${esc(st.why)}.</p>
 
-<div class="scroll"><table>
+<div class="scroll"><table class="led">
   <thead><tr>
     <th>Month</th>
     <th class="r">${ROY}<small>for reference</small></th>
@@ -451,25 +496,10 @@ ${controls()}
   </tfoot>
 </table></div>
 
-<div class="note">
-  <div class="note-h">How to read this statement</div>
-  <ul>
-    <li><b>${ROY}</b> &mdash; what the societies paid in that month. Shown for reference only; it is not part of the running balance.</li>
-    <li><b>MRM Service Fees</b> &mdash; charged on those royalties; they add to the balance.</li>
-    <li><b>Invoice base</b> &mdash; the service fee already counted above, so it is shown for reference without a sign.</li>
-    <li><b>GST</b> &mdash; charged on the invoice base; it adds to the balance.</li>
-    <li><b>Payments Received by MRM</b> and <b>TDS</b> (tax the client withheld on those invoices) &mdash; reduce the balance.</li>
-    <li><b class="up">Green</b> figures increase the balance payable to MRM; <b class="dn">red</b> figures reduce it.</li>
-  </ul>
-</div>
 ${bankBlock(st.paymentAccount)}
-<div class="acc">
-  <span class="acc-cap">For any questions about this statement, or to confirm a payment, please contact our Accounts Team.</span>
-  <span class="acc-who"><b>${ACCOUNTS.name}</b><a href="tel:${ACCOUNTS.phone.replace(/\s/g, '')}">${ACCOUNTS.phone}</a></span>
-</div>
-</div>
-<p class="ft">Developed and maintained by <b>RDJ(MRM)</b><span class="v">v${APP_VERSION}</span></p>
-</div></body></html>`;
+<p class="acc">For account queries or payment confirmation: <b>${ACCOUNTS.name}</b> | <a href="tel:${ACCOUNTS.phone.replace(/\s/g, '')}">${ACCOUNTS.phone}</a></p>
+`, `Statement period ${esc(st.periodFrom)} &ndash; ${esc(st.periodTo)}`)}
+</div></div></body></html>`;
 }
 
 function emptyPage(info) {
@@ -477,16 +507,9 @@ function emptyPage(info) {
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
 <title>${esc(info.clientId)} - ${esc(info.clientName)} - Royalty &amp; Service Fee Statement</title><style>${STYLE}</style></head>
 <body><div class="wrap"><div class="card">
-<header class="mast">
-  <div>
-    <div class="brand"><div class="mark">MRM</div><span>Music Rights Management</span></div>
-    <h1>${esc(info.clientName)}</h1>
-    <div class="ident"><span class="id">${esc(info.clientId)}</span></div>
-  </div>
-</header>
-<div class="empty"><p>No entries for this client in the range you picked.</p>
-<p class="terms">Go back to the report and choose a different period or year.</p></div>
-</div><p class="ft">Developed and maintained by <b>RDJ(MRM)</b><span class="v">v${APP_VERSION}</span></p></div></body></html>`;
+${sheet(info.clientName, info.clientId, `<div class="empty"><p>No entries for this client in the range you picked.</p>
+<p class="terms">Go back to the report and choose a different period or year.</p></div>`)}
+</div></div></body></html>`;
 }
 
 async function render(req, res, defaultMode) {
