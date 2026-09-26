@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { clientApi, royaltyApi, settingsApi } from '../services/api';
 
 // Initial state
@@ -136,6 +136,14 @@ const AppContext = createContext(null);
 // Provider component
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  // True while the financial year is being switched; the app shows a
+  // full-screen loader and blocks saving until the new year is in place.
+  const [fySwitching, setFySwitching] = useState(false);
+  // The year the store currently holds. Read after an await to drop replies
+  // that belong to a year the user has since left.
+  const fyRef = useRef(initialState.settings.financialYear.startYear);
+  fyRef.current = state.settings.financialYear?.startYear;
+  const fySwitchingRef = useRef(false);
 
   // Helper to show toast
   const showToast = useCallback((message, type = 'success') => {
@@ -244,9 +252,20 @@ export function AppProvider({ children }) {
 
   // Entry actions
   const saveEntry = useCallback(async (entryData, status = 'draft') => {
+    if (fySwitchingRef.current) {
+      showToast('Financial year is changing - try again in a moment', 'error');
+      throw new Error('Financial year switch in progress');
+    }
     try {
       const res = await royaltyApi.saveEntry({ ...entryData, status });
       const responseData = res.data;
+
+      // The year was switched while this save was in flight. The server stored
+      // it under the right year; just keep it out of the new year's store.
+      if (entryData.financialYear && entryData.financialYear !== fyRef.current) {
+        showToast(`Saved to FY ${entryData.financialYear}-${entryData.financialYear + 1}`);
+        return responseData.entry || responseData;
+      }
 
       // Handle new response format: { entry, cascadedEntries }
       const savedEntry = responseData.entry || responseData;
@@ -297,27 +316,27 @@ export function AppProvider({ children }) {
 
   // Settings actions
   const updateFinancialYear = useCallback(async (startYear) => {
+    fySwitchingRef.current = true;
+    setFySwitching(startYear);
     try {
       const res = await settingsApi.updateFinancialYear(startYear);
-      dispatch({
-        type: ActionTypes.UPDATE_SETTING,
-        payload: { key: 'financialYear', value: { startYear, endYear: startYear + 1 } },
-      });
 
-      // Reload entries for the new FY
-      dispatch({ type: ActionTypes.SET_BILLING_LOADING, payload: true });
+      // Load the new year's entries before switching anything on screen, then
+      // swap year, entries and the open form in one go. Changing the year first
+      // left a moment where the form showed last year's entry under the new
+      // year - saving then copied it across, which is how a handful of April
+      // entries became copies of the previous April.
       const entriesRes = await royaltyApi.getAll({ financialYear: startYear });
       const entriesMap = entriesRes.data.reduce((acc, entry) => {
         const key = `${entry.clientId}_${entry.month}`;
         acc[key] = entry;
         return acc;
       }, {});
+      dispatch({
+        type: ActionTypes.UPDATE_SETTING,
+        payload: { key: 'financialYear', value: { startYear, endYear: startYear + 1 } },
+      });
       dispatch({ type: ActionTypes.SET_BILLING_ENTRIES, payload: entriesMap });
-
-      // The open form still holds the entry for the year we just left. Re-point
-      // it at the new year's entry for the same client and month, or clear it.
-      // Without this, saving files last year's figures under the new year - which
-      // is how a handful of April entries became copies of the previous April.
       if (state.selectedClient) {
         const key = `${state.selectedClient.clientId}_${state.currentMonth}`;
         dispatch({ type: ActionTypes.SET_CURRENT_ENTRY, payload: entriesMap[key] || null });
@@ -328,6 +347,9 @@ export function AppProvider({ children }) {
     } catch (error) {
       showToast('Error updating financial year', 'error');
       throw error;
+    } finally {
+      fySwitchingRef.current = false;
+      setFySwitching(false);
     }
   }, [showToast, state.selectedClient, state.currentMonth]);
 
@@ -342,6 +364,7 @@ export function AppProvider({ children }) {
 
   const value = {
     ...state,
+    fySwitching,
     fetchClients,
     selectClient,
     addClient,

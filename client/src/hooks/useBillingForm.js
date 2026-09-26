@@ -54,6 +54,9 @@ export function useBillingForm() {
   useEffect(() => {
     setCarryForwardLocked(false);
     setCarryForwardOverride(false);
+    // A lookup still running when the client, month or year changes must not
+    // write the old year's balance into the new form.
+    let stale = false;
     if (currentEntry) {
       setFormData({
         commissionRate: currentEntry.commissionRate ?? '',
@@ -90,6 +93,7 @@ export function useBillingForm() {
         const fy = settings.financialYear?.startYear;
         royaltyApi.getPreviousOutstanding(selectedClient.clientId, currentMonth, fy)
           .then((res) => {
+            if (stale) return;
             setCarryForwardLocked(!!res.data.exists);
             if (res.data.exists) {
               setFormData((prev) => ({ ...prev, previousMonthOutstanding: res.data.totalOutstanding }));
@@ -116,6 +120,7 @@ export function useBillingForm() {
         const fy = settings.financialYear?.startYear;
         royaltyApi.getPreviousOutstanding(selectedClient.clientId, currentMonth, fy)
           .then(res => {
+            if (stale) return;
             setCarryForwardLocked(!!res.data.exists);
             const prevOutstanding = res.data.totalOutstanding;
             if (prevOutstanding) {
@@ -125,6 +130,7 @@ export function useBillingForm() {
           .catch(() => {});
       }
     }
+    return () => { stale = true; };
   }, [currentEntry, selectedClient, currentMonth, settings.financialYear]);
 
   // Enable editing for submitted entries
