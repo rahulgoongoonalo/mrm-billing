@@ -2,12 +2,17 @@
 // and from the Whatsapp Report screen.
 // Not behind JWT: an email client cannot carry an access token.
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { buildStatement, verifyStatementToken } = require('../services/statementBuilder');
 const { PAYMENT_ACCOUNTS } = require('../utils/paymentAccounts');
+
+// Logo inlined so the page renders without a static file route (and in email previews).
+const LOGO_SRC = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '../assets/mrm-logo.png')).toString('base64')}`;
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -31,8 +36,8 @@ const inr = (v) => {
 const STYLE = `
 :root{
   --ink:#16202e; --muted:#5f6b7c; --faint:#98a2b3; --line:#e2e8f0; --hair:#edf1f6;
-  --navy:#1F3864; --blue:#2E6DA4; --gold:#b08d3c; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#e9edf3;
-  --tint:#f6f8fb;
+  --navy:#15803D; --blue:#16A34A; --gold:#4ADE80; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#e8f1ec;
+  --tint:#f3faf6;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -54,14 +59,14 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .lh{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
   padding:24px 34px 12px;border-bottom:2px solid var(--navy);position:relative;margin-bottom:3px}
 .lh::after{content:"";position:absolute;left:0;right:0;bottom:-5px;border-bottom:1px solid var(--gold)}
-.brand{display:flex;align-items:center;gap:11px}
-.mark{width:40px;height:40px;border-radius:4px;background:var(--navy);color:#fff;
-  display:grid;place-items:center;font-size:12px;font-weight:700;letter-spacing:.8px}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.logo{display:block;height:46px;width:auto;flex-shrink:0}
+.brand>div{padding-left:12px;border-left:1px solid var(--line)}
 .brand b{display:block;font-size:17px;font-weight:700;color:var(--navy);letter-spacing:.2px;line-height:1.15}
-.brand small{display:block;margin-top:2px;font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold);font-weight:600}
-.lh-r{text-align:right}
+.brand small{display:block;margin-top:2px;font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--blue);font-weight:600}
+.lh-r{text-align:right;flex-shrink:0}
 .lh-r b{display:block;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:var(--navy)}
-.lh-r span{display:block;margin-top:2px;font-size:11.5px;color:var(--muted)}
+.lh-r span{display:block;margin-top:2px;font-size:11.5px;color:var(--muted);white-space:nowrap}
 
 /* addressee + closing balance */
 .mast{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;padding:20px 0 16px}
@@ -105,12 +110,12 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 /* ledger: month | royalty | service fees | invoices & GST | payments | balance */
 .led{width:100%;border-collapse:collapse;border:1px solid var(--line)}
 .led thead th{position:sticky;top:0;z-index:2;background:var(--navy);color:#fff;font-size:10px;font-weight:600;
-  letter-spacing:.5px;text-transform:uppercase;text-align:left;padding:8px 10px;vertical-align:bottom;line-height:1.3}
+  letter-spacing:.5px;text-transform:uppercase;text-align:left;padding:9px 10px;vertical-align:middle;line-height:1.3}
 .led thead th.r{text-align:right}
 .led thead th small{display:block;font-size:9px;font-weight:500;letter-spacing:.2px;text-transform:none;opacity:.75}
 .led tbody td{padding:7px 10px;border-bottom:1px solid var(--hair);vertical-align:top}
-.led tbody tr:nth-child(even) td{background:#fafbfd}
-.led tbody tr:hover td{background:#f4f8fd}
+.led tbody tr:nth-child(even) td{background:#f8fcf9}
+.led tbody tr:hover td{background:#eff9f2}
 .led td+td{border-left:1px solid var(--hair)}
 .led td.mo{width:70px;white-space:nowrap;font-weight:700;color:var(--navy);font-size:12.5px}
 .led td.roy{width:160px}
@@ -138,11 +143,11 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .up,.ln li b.up{color:var(--green)}
 .dn,.ln li b.dn{color:var(--red)}
 
-.led tfoot td{background:#e3e9f2;border-top:2px solid var(--navy);font-weight:700;color:var(--navy);padding:9px 10px;vertical-align:middle}
+.led tfoot td{background:#e2f3e8;border-top:2px solid var(--navy);font-weight:700;color:var(--navy);padding:9px 10px;vertical-align:middle}
 .led tfoot tr.sums td{text-align:right;font-size:13px}
 .led tfoot tr.sums td.mo{text-align:left}
 .led tfoot tr.sums td.roy{color:var(--blue)}
-.led tfoot tr.close td{border-top:1px solid #c9d4e5;background:var(--navy);color:#fff}
+.led tfoot tr.close td{border-top:1px solid #c3e3cf;background:var(--navy);color:#fff}
 .led tfoot .lead{font-size:12.5px;text-align:right}
 .ctot{margin-left:16px;font-size:17px;white-space:nowrap}
 .led tfoot tr.close .ctot i{color:rgba(255,255,255,.6)}
@@ -173,8 +178,8 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .pick>p{margin:0 0 18px;color:var(--muted);font-size:13px}
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .pick-card{display:block;padding:16px 18px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:inherit;
-  background:#fbfcfe;transition:border-color .15s,box-shadow .15s}
-.pick-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(46,109,164,.12)}
+  background:#fafdfb;transition:border-color .15s,box-shadow .15s}
+.pick-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(18,146,90,.14)}
 .pick-card b{display:block;font-size:15px;color:var(--navy)}
 .pick-card span{display:block;margin-top:4px;font-size:12.5px;color:var(--muted)}
 .pick-card em{display:inline-block;margin-top:12px;font-style:normal;font-size:12.5px;font-weight:600;color:var(--blue)}
@@ -189,6 +194,9 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .balance{text-align:left;min-width:0}
 }
 /* narrow screens that still show the table: let it scroll sideways rather than squash */
+@media screen and (min-width:1100px){
+  .led thead th{white-space:nowrap}
+}
 @media screen and (min-width:641px) and (max-width:980px){
   .scroll{overflow-x:auto}
   .scroll .led{min-width:900px}
@@ -204,7 +212,7 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .lh-r span,.brand small{display:none}
   .lh-r b{font-size:10px;letter-spacing:1px}
   .brand b{font-size:14px}
-  .mark{width:34px;height:34px;font-size:10px}
+  .logo{height:34px}
   .body{padding:0 16px}
   .bar{margin:0 -16px;padding:10px 16px}.bar .spacer{display:none}.print{flex:1;justify-content:center;padding:10px 14px}
   .lf{margin:0 16px;flex-direction:column;gap:2px}
@@ -234,12 +242,12 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
     font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--faint)}
   .led td.nil{display:none}
   .ln li{font-size:12.5px}
-  .led tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:6px;background:#f1f6fc}
+  .led tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:6px;background:#ecf8f0}
   .led td.roy::before{content:attr(data-label);float:left;font-size:11.5px;color:var(--muted)}
   .rt{font-size:13px}
   .rb{margin-top:4px;clear:both}
 
-  .led tfoot tr{display:block;padding:12px 16px;background:#e3e9f2;border-top:2px solid var(--navy)}
+  .led tfoot tr{display:block;padding:12px 16px;background:#e2f3e8;border-top:2px solid var(--navy)}
   .led tr:nth-child(n) td{width:auto}
   .led tfoot tr.sums{display:grid;grid-template-columns:1fr;grid-template-areas:none;gap:6px}
   .led tfoot tr.sums td,.led tfoot tr:nth-child(n) td.roy{grid-area:auto;display:flex;justify-content:space-between;align-items:baseline;
@@ -271,7 +279,12 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .sheet>*>tr{display:table-row}
   .sheet>*>tr>td{display:table-cell}
   .sheet>tfoot td{height:16mm}
-  .lh{margin:10mm 12mm 3px;padding:0 0 8px}
+  .lh{margin:10mm 12mm 3px;padding:0 0 8px;gap:14px}
+  .logo{height:36px}
+  .brand b{font-size:14.5px}
+  .brand small{font-size:8.5px;letter-spacing:1.1px}
+  .lh-r b{font-size:10.5px;letter-spacing:1.4px}
+  .lh-r span{font-size:10.5px}
   .body{padding:0 12mm}
   .lf{position:fixed;left:12mm;right:12mm;bottom:8.5mm;margin:0;padding:5px 0 0}
 
@@ -284,8 +297,10 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .why{margin:6px 0;font-size:10px}
 
   /* A4 is ~700px wide inside the border: let everything wrap and shrink */
-  .led thead th{position:static;padding:6px 6px;font-size:8px;letter-spacing:.3px}
-  .led thead th small{font-size:7.5px}
+  /* print: every column title breaks at the same planned point, never mid-phrase */
+  .led thead th{position:static;padding:6px 6px;font-size:8px;letter-spacing:.3px;white-space:nowrap;line-height:1.35;vertical-align:top}
+  .led thead th .l2{display:block}
+  .led thead th small{font-size:7.5px;margin-top:1px}
   .led tbody td,.led tfoot td{padding:4px 6px}
   .led td.mo{width:44px;font-size:10.5px}
   .led td.roy{width:104px}
@@ -339,7 +354,7 @@ const PAY = 'Payments Received by MRM';
 // Letterhead, repeated at the top of every printed page.
 function letterhead(name, id) {
   return `<header class="lh">
-  <div class="brand"><div class="mark">MRM</div><div><b>Samraj Music Rights Management</b><small>Royalty &amp; Service Fee Statement</small></div></div>
+  <div class="brand"><img class="logo" src="${LOGO_SRC}" alt="MRM | Music Rights Management"><div><b>Samraj Music Rights Management</b><small>Royalty &amp; Service Fee Statement</small></div></div>
   <div class="lh-r"><b>Statement of Account</b><span>${esc(name)} &middot; ${esc(id)}</span></div>
 </header>`;
 }
@@ -467,11 +482,11 @@ ${controls()}
 <div class="scroll"><table class="led">
   <thead><tr>
     <th>Month</th>
-    <th class="r">${ROY}<small>for reference</small></th>
-    <th>${FEE}<small>adds to balance</small></th>
-    <th>${INV}<small>only GST adds to balance</small></th>
-    <th>${PAY}<small>reduces balance</small></th>
-    <th class="r">${BAL}</th>
+    <th class="r">Royalties Received <span class="l2">by You</span><small>for reference</small></th>
+    <th>MRM Service <span class="l2">Fees</span><small>adds to balance</small></th>
+    <th>Invoices <span class="l2">&amp; GST</span><small>only GST adds to balance</small></th>
+    <th>Payments Received <span class="l2">by MRM</span><small>reduces balance</small></th>
+    <th class="r">Month-End Balance <span class="l2">Payable</span></th>
   </tr></thead>
   <tbody>
     <tr>

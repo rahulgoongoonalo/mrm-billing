@@ -12,6 +12,22 @@ import ReportsPanel from './ReportsPanel';
 import Toast from './Toast';
 import Modals from './Modals';
 
+// Covers the whole app while the financial year switches, so nothing can be
+// read or saved half-way between two years.
+function FySwitchOverlay() {
+  const { fySwitching } = useApp();
+  if (!fySwitching) return null;
+  return (
+    <div className="fy-overlay" role="status" aria-live="polite">
+      <div className="fy-overlay-card">
+        <div className="fy-overlay-spin" />
+        <b>Loading FY {fySwitching}&ndash;{fySwitching + 1}</b>
+        <span>Fetching entries for the new financial year&hellip;</span>
+      </div>
+    </div>
+  );
+}
+
 function AppShell() {
   const { closeModal } = useApp();
   const [view, navigate] = useHashRoute(NAV_IDS, DEFAULT_VIEW);
@@ -39,7 +55,6 @@ function AppShell() {
         <TopBar
           navItem={navItem}
           onOpenSidebar={() => setSidebarOpen(true)}
-          onNavigate={navigate}
         />
 
         <main className="app-content">
@@ -55,6 +70,7 @@ function AppShell() {
 
       <Toast />
       <Modals />
+      <FySwitchOverlay />
     </div>
   );
 }

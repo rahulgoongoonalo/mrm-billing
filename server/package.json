@@ -1,6 +1,6 @@
 {
   "name": "mrm-billing-server",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Backend API for MRM Billing Application",
   "main": "index.js",
   "scripts": {
