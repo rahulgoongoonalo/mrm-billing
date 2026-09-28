@@ -367,7 +367,7 @@ function MailWizard({ clientId, month, year, onClose }) {
       {pdfView && (
         <iframe className="mw-pdf" title="Statement PDF" src={pdfView.url} />
       )}
-      <iframe className="mw-mail" title="Mail preview" srcDoc={preview.html} sandbox="allow-popups" />
+      <iframe className="mw-mail" title="Mail preview" srcDoc={preview.html} sandbox="allow-popups allow-popups-to-escape-sandbox" />
     </>
   );
 

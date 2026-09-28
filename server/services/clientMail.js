@@ -96,7 +96,7 @@ const MAIL_TYPES = {
     summary: 'Full reconciliation for a long-pending balance. Asks for a call to agree a payment schedule.',
     signer: 'sherley',
     subject: (c) => `Statement of account and outstanding summary – ${c.name} (${c.clientId})`,
-    attach: { full: true, outstanding: true },
+    attach: { full: true, outstanding: false },
     fields: [
       { key: 'startDate', label: 'Reconciliation from', kind: 'date', default: (ctx) => ctx.firstEntryDate },
       { key: 'currentDate', label: 'As of (current date)', kind: 'date', default: () => isoDate(new Date()) },
@@ -119,7 +119,7 @@ const MAIL_TYPES = {
     summary: 'Updated account and royalty statement, and what the client will receive every time royalty comes in.',
     signer: 'sherley',
     subject: (c) => `Your updated account and royalty statement – ${c.name} (${c.clientId})`,
-    attach: { full: false, outstanding: true },
+    attach: { full: true, outstanding: false },
     fields: [
       { key: 'asOfDate', label: 'Statement as of', kind: 'date', default: () => isoDate(new Date()) },
     ],
@@ -148,7 +148,7 @@ const MAIL_TYPES = {
     summary: 'For clients whose royalty is still below ₹500: membership, catalogue and registration status.',
     signer: 'sherley',
     subject: (c) => `Membership, catalogue and registration-status update – ${c.name} (${c.clientId})`,
-    attach: { full: false, outstanding: false },
+    attach: { full: true, outstanding: false },
     fields: [
       { key: 'society', label: 'Membership society', kind: 'text', default: (ctx) => ctx.societies },
     ],
@@ -423,7 +423,7 @@ function renderMail({ type, client, values, subject, recipients, latest = null, 
   ${recipients.intendedTo.length ? `In live mode it would go to ${esc(recipients.intendedTo.join(', '))}.` : 'No client email is recorded.'}
 </div>` : '';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
 <div style="max-width:640px;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#222;">
 ${banner}
