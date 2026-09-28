@@ -15,6 +15,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { getClientTransporter } = require('../services/emailService');
 const { buildStatement, calOrder } = require('../services/statementBuilder');
 const { statementPdf, TITLES } = require('../services/statementPdf');
+const { htmlToPdf } = require('../services/statementPrint');
+const { renderStatementPage } = require('./statements');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 const {
   MAIL_TYPES, ACCOUNTS_EMAIL, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
@@ -49,7 +51,14 @@ async function buildPdf(client, rows, key) {
   const st = buildStatement(client, rows, { mode: spec.mode });
   if (!st || st.empty) return null;
   st.paymentAccount = client.paymentAccount;
-  return statementPdf(st);
+  // The statement page printed, so the PDF matches what the client sees online.
+  // If Chrome is unavailable on this host, the simpler pdfkit statement goes instead.
+  try {
+    return await htmlToPdf(renderStatementPage(st));
+  } catch (err) {
+    console.error('Statement page could not be printed, using the fallback PDF:', err.message);
+    return statementPdf(st);
+  }
 }
 
 // Everything the mail needs, rebuilt from the request each time so what is
