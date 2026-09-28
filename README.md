@@ -228,23 +228,14 @@ MAIL_SHERLEY_EMAIL=            # optional: Email line in the mail signature
 #   ENTRY_MAIL_ENABLED=false           -> client mail switched off
 ```
 
-The statement PDF attached to client mail is the online statement page printed
-by headless Chrome (puppeteer). On a fresh Linux server, install Chrome and the
-system libraries it needs once, from `server/`:
-```bash
-npx puppeteer browsers install chrome --install-deps   # --install-deps needs root
-```
-If Chrome cannot start, mail still goes out with a simpler built-in PDF, and the
-server log says `Statement page could not be printed`. `PUPPETEER_EXECUTABLE_PATH`
-can point at an already-installed Chrome/Chromium instead.
-
 ### Client mail
 Submitting an entry opens the mail wizard: it checks the client record is
 complete (email, phone, GST ID, society, commission rate, payment account),
 lets you pick one of three letters (historical outstanding, regular payer,
-membership & catalogue), fill in its details and attachments, preview it with
-its statement PDFs, and send it. Every mail sent is kept on the Mail History
-page, exactly as it went out.
+membership & catalogue), fill in its details, preview it and send it. Mails
+carry no attachments: the client opens and downloads the statement from the
+Balance build-up / Full record links in the mail. Every mail sent is kept on
+the Mail History page, exactly as it went out.
 
 ---
 

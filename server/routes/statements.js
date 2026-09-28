@@ -565,6 +565,3 @@ router.get('/:clientId/outstanding', (req, res) => render(req, res, 'window'));
 router.get('/:clientId/full', (req, res) => render(req, res, 'full'));
 
 module.exports = router;
-// The page builder itself, so the PDF attached to client mail is this exact
-// page printed, not a separate layout that could drift from it.
-module.exports.renderStatementPage = page;

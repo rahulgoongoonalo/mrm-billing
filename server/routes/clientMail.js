@@ -1,11 +1,11 @@
 // The client mail wizard's API. A mail is only ever sent by a person who has
 // walked through: check the client master -> pick a letter -> fill it in ->
-// preview it with its attachments -> send.
+// preview it -> send. Mails carry no attachments: the client opens and
+// downloads the statement from the links in the mail.
 //
-//   GET  /api/client-mail/:clientId/check           readiness + letter types + defaults
-//   POST /api/client-mail/:clientId/preview         the rendered mail and attachment list
-//   GET  /api/client-mail/:clientId/statement/:mode the PDF that would be attached
-//   POST /api/client-mail/:clientId/send            send it and log it on the month
+//   GET  /api/client-mail/:clientId/check     readiness + letter types + defaults
+//   POST /api/client-mail/:clientId/preview   the rendered mail
+//   POST /api/client-mail/:clientId/send      send it and log it on the month
 
 const express = require('express');
 const router = express.Router();
@@ -14,29 +14,12 @@ const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { authenticateToken } = require('../middleware/auth');
 const { getClientTransporter } = require('../services/emailService');
 const { buildStatement, calOrder, statementUrl } = require('../services/statementBuilder');
-const { statementPdf, TITLES } = require('../services/statementPdf');
-const { htmlToPdf } = require('../services/statementPrint');
-const { renderStatementPage } = require('./statements');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 const {
   MAIL_TYPES, ACCOUNTS_EMAIL, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
 } = require('../services/clientMail');
 
 router.use(authenticateToken);
-
-// Extra files (catalogue, registration report) arrive base64-encoded in the
-// JSON body. Brevo refuses mails much over 10 MB in total.
-const MAX_EXTRA_BYTES = 8 * 1024 * 1024;
-
-// 'full' is the complete record, 'outstanding' the trimmed build-up of the balance.
-const STATEMENTS = {
-  full: { mode: 'full', title: TITLES.full },
-  outstanding: { mode: 'window', title: TITLES.window },
-};
-
-const safeName = (s) => String(s || '').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-const statementFilename = (client, key) =>
-  `MRM-${key === 'full' ? 'Statement-of-Account' : 'Outstanding-Summary'}-${safeName(client.clientId)}-${safeName(client.name)}.pdf`;
 
 async function load(clientId) {
   const client = await Client.findOne({ clientId });
@@ -45,29 +28,11 @@ async function load(clientId) {
   return { client, rows };
 }
 
-async function buildPdf(client, rows, key) {
-  const spec = STATEMENTS[key];
-  if (!spec || !rows.length) return null;
-  const st = buildStatement(client, rows, { mode: spec.mode });
-  if (!st || st.empty) return null;
-  st.paymentAccount = client.paymentAccount;
-  // The statement page printed, so the PDF matches what the client sees online.
-  // If Chrome is unavailable on this host, the simpler pdfkit statement goes
-  // instead, and `fallback` says why so the wizard can show it.
-  try {
-    return { content: await htmlToPdf(renderStatementPage(st)), fallback: '' };
-  } catch (err) {
-    const reason = String(err.message || err).split('\n')[0];
-    console.error('Statement page could not be printed, using the fallback PDF:', err.message);
-    return { content: await statementPdf(st), fallback: reason };
-  }
-}
-
 // Everything the mail needs, rebuilt from the request each time so what is
 // sent is exactly what was previewed.
 async function compose(req, { preview }) {
   const { clientId } = req.params;
-  const { type, values = {}, subject, cc, attach = {}, extraFiles = [] } = req.body || {};
+  const { type, values = {}, subject, cc } = req.body || {};
   const fail = (status, message, extra) => Object.assign(new Error(message), { status, extra });
 
   if (!MAIL_TYPES[type]) throw fail(400, 'Choose a mail type.');
@@ -80,28 +45,10 @@ async function compose(req, { preview }) {
   const missing = missingFields(type, values);
   if (missing.length) throw fail(400, `Fill in: ${missing.join(', ')}`);
 
-  const attachments = [];
-  for (const key of Object.keys(STATEMENTS)) {
-    if (!attach[key]) continue;
-    const pdf = await buildPdf(client, rows, key);
-    if (pdf) attachments.push({ key, filename: statementFilename(client, key), content: pdf.content, fallback: pdf.fallback, generated: true });
-  }
-
-  let extraBytes = 0;
-  for (const f of Array.isArray(extraFiles) ? extraFiles : []) {
-    if (!f || !f.filename || !f.content) continue;
-    const content = Buffer.from(String(f.content), 'base64');
-    extraBytes += content.length;
-    attachments.push({ key: 'upload', filename: String(f.filename).slice(0, 150), content, generated: false });
-  }
-  if (extraBytes > MAX_EXTRA_BYTES) throw fail(400, 'Uploaded files are too large (8 MB in total at most).');
-  // Every letter refers to what is attached, so one must go with it.
-  if (!attachments.length) throw fail(400, 'Attach at least one file: tick a statement or add a file.');
-
   const recipients = resolveRecipients(client, cc);
   // rows are in calendar order, so the last is the latest month held.
   const mail = renderMail({ type, client, values, subject, recipients, latest: rows[rows.length - 1], preview });
-  return { client, rows, recipients, mail, attachments };
+  return { client, rows, recipients, mail };
 }
 
 const sendError = (res, err) => {
@@ -132,6 +79,7 @@ router.get('/history', async (req, res) => {
       to: m.to || '',
       intendedTo: m.intendedTo || '',
       cc: m.cc || '',
+      // only mails sent before attachments were dropped have any
       attachments: m.attachments || [],
       error: m.error || '',
       byEmail: m.byEmail || '',
@@ -186,7 +134,7 @@ router.get('/:clientId/check', async (req, res) => {
     const recipients = resolveRecipients(client, ACCOUNTS_EMAIL);
 
     // The last few mails sent to this client, from any month.
-    const history = rows.flatMap((r) => (r.mailLog || []).map((m) => ({ ...m, month: r.month, year: r.year })))
+    const history = rows.flatMap((r) => (r.mailLog || []).map((m) => ({ ...m, html: undefined, month: r.month, year: r.year })))
       .sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt))
       .slice(0, 5);
 
@@ -200,8 +148,6 @@ router.get('/:clientId/check', async (req, res) => {
       context,
       types: describeTypes(client, context),
       defaultCc: ACCOUNTS_EMAIL,
-      // The statement pages, so the wizard can open one to save as PDF by hand.
-      statementLinks: { full: statementUrl(client.clientId, 'full'), outstanding: statementUrl(client.clientId, 'outstanding') },
       recipients,
       history,
     });
@@ -213,31 +159,17 @@ router.get('/:clientId/check', async (req, res) => {
 // @route POST /api/client-mail/:clientId/preview
 router.post('/:clientId/preview', async (req, res) => {
   try {
-    const { recipients, mail, attachments } = await compose(req, { preview: true });
+    const { client, recipients, mail } = await compose(req, { preview: true });
     res.json({
       subject: mail.subject,
       html: mail.html,
       recipients,
-      attachments: attachments.map((a) => ({ key: a.key, filename: a.filename, size: a.content.length, generated: a.generated, fallback: a.fallback || '' })),
+      // the links the mail carries, so they can be checked before sending
+      statementLinks: {
+        full: statementUrl(client.clientId, 'full'),
+        outstanding: statementUrl(client.clientId, 'outstanding'),
+      },
     });
-  } catch (err) {
-    sendError(res, err);
-  }
-});
-
-// @route GET /api/client-mail/:clientId/statement/:key   (key: full | outstanding)
-router.get('/:clientId/statement/:key', async (req, res) => {
-  try {
-    const { client, rows } = await load(req.params.clientId);
-    if (!client) return res.status(404).json({ message: 'Client not found.' });
-    if (!client.paymentAccount) return res.status(400).json({ message: 'Set a payment account on the client first.' });
-    const built = await buildPdf(client, rows, req.params.key);
-    const pdf = built && built.content;
-    if (!pdf) return res.status(404).json({ message: 'No statement for this client.' });
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${statementFilename(client, req.params.key)}"`,
-    }).send(pdf);
   } catch (err) {
     sendError(res, err);
   }
@@ -246,7 +178,7 @@ router.get('/:clientId/statement/:key', async (req, res) => {
 // @route POST /api/client-mail/:clientId/send
 router.post('/:clientId/send', async (req, res) => {
   try {
-    const { client, rows, recipients, mail, attachments } = await compose(req, { preview: false });
+    const { client, rows, recipients, mail } = await compose(req, { preview: false });
     if (recipients.blocked) return res.status(400).json({ message: recipients.blocked });
 
     const from = process.env.CLIENT_MAIL_FROM || process.env.EMAIL_FROM || '';
@@ -259,7 +191,6 @@ router.post('/:clientId/send', async (req, res) => {
       cc: recipients.cc.join(', '),
       subject: mail.subject,
       mailType: req.body.type,
-      attachments: attachments.map((a) => a.filename),
       isTest: recipients.isTest,
       byEmail: req.user?.email || '',
     };
@@ -275,7 +206,6 @@ router.post('/:clientId/send', async (req, res) => {
         subject: mail.subject,
         html: mail.html,
         text: mail.text,
-        attachments: attachments.map(({ filename, content }) => ({ filename, content })),
       });
       logLine.ok = true;
     } catch (error) {
@@ -301,7 +231,8 @@ router.post('/:clientId/send', async (req, res) => {
     }
 
     if (!logLine.ok) return res.status(502).json({ message: `The mail could not be sent: ${logLine.error}`, log: logLine });
-    res.json({ ok: true, log: logLine, client: client.clientId });
+    // The stored copy of the mail is not needed back.
+    res.json({ ok: true, log: { ...logLine, html: undefined }, client: client.clientId });
   } catch (err) {
     sendError(res, err);
   }

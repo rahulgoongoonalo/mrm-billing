@@ -8,29 +8,17 @@ import ClientFormModal from './ClientFormModal';
 //
 //   1. Check    - the client master must be complete (email, phone, GST...)
 //   2. Type     - which of the three letters
-//   3. Details  - fill in the letter, recipients and attachments
-//   4. Preview  - the mail exactly as it will go, with its PDFs
+//   3. Details  - fill in the letter and recipients
+//   4. Preview  - the mail exactly as it will go
 //   5. Sent     - the outcome
+//
+// Mails carry no attachments: the client opens (and downloads) the statement
+// from the Balance build-up / Full record links in the mail.
 
 const STEPS = ['Client check', 'Mail type', 'Details', 'Preview', 'Sent'];
 
-const STATEMENT_ATTACHMENTS = [
-  { key: 'full', label: 'Statement of account', note: 'Every month on record' },
-  { key: 'outstanding', label: 'Outstanding payment summary', note: 'How the current balance was built' },
-];
-
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-
 const inr = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 })
   .format(Number(v) || 0);
-const kb = (bytes) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-
-const readAsBase64 = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-  reader.onerror = () => reject(reader.error);
-  reader.readAsDataURL(file);
-});
 
 const errorText = (err, fallback) => err?.response?.data?.message || err?.message || fallback;
 
@@ -46,14 +34,11 @@ function MailWizard({ clientId, month, year, onClose }) {
   const [type, setType] = useState('');
   const [values, setValues] = useState({});        // { [type]: { field: value } }
   const [subjects, setSubjects] = useState({});    // { [type]: subject }
-  const [attach, setAttach] = useState({});        // { [type]: { full, outstanding } }
   const [cc, setCc] = useState('');
-  const [uploads, setUploads] = useState([]);      // [{ filename, size, content }]
 
   const [preview, setPreview] = useState(null);    // POST /preview
   const [busy, setBusy] = useState('');
   const [stepError, setStepError] = useState('');
-  const [pdfView, setPdfView] = useState(null);    // { key, url }
   const [result, setResult] = useState(null);      // { ok, message, log }
   const pressedOnBackdrop = useRef(false);
 
@@ -74,7 +59,6 @@ function MailWizard({ clientId, month, year, onClose }) {
         setCc(data.defaultCc || '');
         setValues(Object.fromEntries(data.types.map((t) => [t.key, Object.fromEntries(t.fields.map((f) => [f.key, f.value ?? '']))])));
         setSubjects(Object.fromEntries(data.types.map((t) => [t.key, t.subject])));
-        setAttach(Object.fromEntries(data.types.map((t) => [t.key, { ...t.attach }])));
       }
     } catch (err) {
       setLoadError(errorText(err, 'Could not check this client.'));
@@ -92,12 +76,8 @@ function MailWizard({ clientId, month, year, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, editingClient]);
 
-  // Free the PDF preview's object URL when it changes or the wizard closes.
-  useEffect(() => () => { if (pdfView?.url) URL.revokeObjectURL(pdfView.url); }, [pdfView]);
-
   const typeDef = useMemo(() => info?.types.find((t) => t.key === type), [info, type]);
   const typeValues = values[type] || {};
-  const typeAttach = attach[type] || {};
   const missing = typeDef ? typeDef.fields.filter((f) => String(typeValues[f.key] ?? '').trim() === '') : [];
 
   const body = () => ({
@@ -105,8 +85,6 @@ function MailWizard({ clientId, month, year, onClose }) {
     values: typeValues,
     subject: subjects[type],
     cc,
-    attach: typeAttach,
-    extraFiles: uploads.map(({ filename, content }) => ({ filename, content })),
     month,
     year,
   });
@@ -116,32 +94,14 @@ function MailWizard({ clientId, month, year, onClose }) {
   // ---- step 3 -> 4 --------------------------------------------------------
   const loadPreview = async () => {
     if (missing.length) { setStepError(`Fill in: ${missing.map((f) => f.label).join(', ')}`); return; }
-    if (!STATEMENT_ATTACHMENTS.some((a) => typeAttach[a.key]) && !uploads.length) {
-      setStepError('Attach at least one file: tick a statement or add a file.');
-      return;
-    }
     setBusy('preview');
     setStepError('');
-    setPdfView(null);
     try {
       const { data } = await clientMailApi.preview(clientId, body());
       setPreview(data);
       setStep(3);
     } catch (err) {
       setStepError(errorText(err, 'Could not build the preview.'));
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const showPdf = async (key) => {
-    if (pdfView?.key === key) { setPdfView(null); return; }
-    setBusy(`pdf-${key}`);
-    try {
-      const { data } = await clientMailApi.statementPdf(clientId, key);
-      setPdfView({ key, url: URL.createObjectURL(new Blob([data], { type: 'application/pdf' })) });
-    } catch (err) {
-      showToast('Could not open the statement PDF', 'error');
     } finally {
       setBusy('');
     }
@@ -163,16 +123,7 @@ function MailWizard({ clientId, month, year, onClose }) {
     }
   };
 
-  const addFiles = async (fileList) => {
-    const files = [...fileList];
-    const total = [...uploads, ...files].reduce((t, f) => t + f.size, 0);
-    if (total > MAX_UPLOAD_BYTES) { showToast('Attachments can be 8 MB in total at most', 'error'); return; }
-    const read = await Promise.all(files.map(async (f) => ({ filename: f.name, size: f.size, content: await readAsBase64(f) })));
-    setUploads((u) => [...u, ...read]);
-  };
-
   const setField = (key, value) => setValues((v) => ({ ...v, [type]: { ...v[type], [key]: value } }));
-  const toggleAttach = (key) => setAttach((a) => ({ ...a, [type]: { ...a[type], [key]: !a[type]?.[key] } }));
 
   const client = info?.client;
   const recipients = preview?.recipients || info?.recipients;
@@ -276,20 +227,18 @@ function MailWizard({ clientId, month, year, onClose }) {
     <>
       <div className="mw-sub">Letter details</div>
       <div className="mw-grid">
-        {typeDef.fields.map((f) => {
-          return (
-            <div key={f.key} className="input-group">
-              <label htmlFor={`mw-${f.key}`}>{f.label}</label>
-              <input
-                id={`mw-${f.key}`}
-                type={f.kind === 'date' ? 'date' : f.kind === 'amount' ? 'number' : 'text'}
-                step={f.kind === 'amount' ? '0.01' : undefined}
-                value={typeValues[f.key] ?? ''}
-                onChange={(e) => setField(f.key, e.target.value)}
-              />
-            </div>
-          );
-        })}
+        {typeDef.fields.map((f) => (
+          <div key={f.key} className="input-group">
+            <label htmlFor={`mw-${f.key}`}>{f.label}</label>
+            <input
+              id={`mw-${f.key}`}
+              type={f.kind === 'date' ? 'date' : f.kind === 'amount' ? 'number' : 'text'}
+              step={f.kind === 'amount' ? '0.01' : undefined}
+              value={typeValues[f.key] ?? ''}
+              onChange={(e) => setField(f.key, e.target.value)}
+            />
+          </div>
+        ))}
       </div>
 
       <div className="mw-sub">Recipients</div>
@@ -313,38 +262,10 @@ function MailWizard({ clientId, month, year, onClose }) {
         </div>
       </div>
 
-      <div className="mw-sub">Attachments <span className="mw-required">· at least one required</span></div>
-      <div className="mw-attach">
-        {STATEMENT_ATTACHMENTS.map((a) => (
-          <label key={a.key} className={`mw-attach-row${typeAttach[a.key] ? ' on' : ''}`}>
-            <input type="checkbox" checked={!!typeAttach[a.key]} onChange={() => toggleAttach(a.key)} />
-            <span><b>{a.label}</b> <small>PDF · {a.note}</small></span>
-          </label>
-        ))}
-        {uploads.map((u, i) => (
-          <div key={`${u.filename}-${i}`} className="mw-attach-row on">
-            <span className="mw-file-icon" aria-hidden="true">📎</span>
-            <span><b>{u.filename}</b> <small>{kb(u.size)}</small></span>
-            <button type="button" className="mw-remove" onClick={() => setUploads((x) => x.filter((_, j) => j !== i))}>Remove</button>
-          </div>
-        ))}
-        <label className="mw-upload">
-          <input type="file" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
-          + Add a file{type === 'catalogue' ? ' (approved catalogue, registration-status report)' : ''}
-        </label>
-      </div>
-      {info.statementLinks && (
-        <div className="mw-manual-pdf">
-          <span>
-            Want the statement exactly as the page prints it? Open the page, press <b>Download as PDF</b>,
-            save it, add it above with <b>+ Add a file</b>, and untick the generated statement.
-          </span>
-          <span className="mw-manual-links">
-            <a href={info.statementLinks.full} target="_blank" rel="noopener noreferrer">Open full statement ↗</a>
-            <a href={info.statementLinks.outstanding} target="_blank" rel="noopener noreferrer">Open outstanding summary ↗</a>
-          </span>
-        </div>
-      )}
+      <p className="mw-hint">
+        No files are attached. The client opens and downloads the statement from the
+        <b> Balance build-up</b> and <b>Full record</b> links in the mail.
+      </p>
     </>
   );
 
@@ -355,36 +276,16 @@ function MailWizard({ clientId, month, year, onClose }) {
         <div><dt>To</dt><dd>{preview.recipients.to.join(', ') || <em>nobody - sending is off</em>}</dd></div>
         {preview.recipients.cc.length > 0 && <div><dt>CC</dt><dd>{preview.recipients.cc.join(', ')}</dd></div>}
         <div><dt>Subject</dt><dd><b>{preview.subject}</b></dd></div>
-        <div>
-          <dt>Attached</dt>
-          <dd className="mw-chips">
-            {preview.attachments.length === 0 && <em>No attachments</em>}
-            {preview.attachments.map((a) => (a.generated ? (
-              <button
-                key={a.filename}
-                type="button"
-                className={`mw-chip${pdfView?.key === a.key ? ' active' : ''}`}
-                onClick={() => showPdf(a.key)}
-                title="Show this PDF"
-              >
-                📄 {a.filename} <small>{kb(a.size)}</small>
-                {busy === `pdf-${a.key}` ? ' …' : pdfView?.key === a.key ? ' ▲' : ' ▼'}
-              </button>
-            ) : (
-              <span key={a.filename} className="mw-chip">📎 {a.filename} <small>{kb(a.size)}</small></span>
-            )))}
-          </dd>
-        </div>
+        {preview.statementLinks && (
+          <div>
+            <dt>Statement</dt>
+            <dd className="mw-links">
+              <a href={preview.statementLinks.outstanding} target="_blank" rel="noopener noreferrer">Balance build-up ↗</a>
+              <a href={preview.statementLinks.full} target="_blank" rel="noopener noreferrer">Full record ↗</a>
+            </dd>
+          </div>
+        )}
       </dl>
-      {preview.attachments.some((a) => a.fallback) && (
-        <div className="mw-banner warn">
-          <b>Simplified PDF.</b> The server could not print the statement page (Chrome is not available there),
-          so a simpler PDF with the same figures is attached. Reason: <code>{preview.attachments.find((a) => a.fallback).fallback}</code>
-        </div>
-      )}
-      {pdfView && (
-        <iframe className="mw-pdf" title="Statement PDF" src={pdfView.url} />
-      )}
       <iframe className="mw-mail" title="Mail preview" srcDoc={preview.html} sandbox="allow-popups allow-popups-to-escape-sandbox" />
     </>
   );
@@ -397,7 +298,6 @@ function MailWizard({ clientId, month, year, onClose }) {
         <b>{result.log.subject}</b><br />
         to {result.log.to}{result.log.cc ? `, cc ${result.log.cc}` : ''}
       </p>
-      {result.log.attachments.length > 0 && <p className="mw-hint">Attached: {result.log.attachments.join(', ')}</p>}
       {result.log.isTest && <p className="mw-hint">Test mode is on, so the client did not receive it.</p>}
     </div>
   ) : (
