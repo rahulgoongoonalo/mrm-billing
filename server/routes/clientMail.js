@@ -52,12 +52,14 @@ async function buildPdf(client, rows, key) {
   if (!st || st.empty) return null;
   st.paymentAccount = client.paymentAccount;
   // The statement page printed, so the PDF matches what the client sees online.
-  // If Chrome is unavailable on this host, the simpler pdfkit statement goes instead.
+  // If Chrome is unavailable on this host, the simpler pdfkit statement goes
+  // instead, and `fallback` says why so the wizard can show it.
   try {
-    return await htmlToPdf(renderStatementPage(st));
+    return { content: await htmlToPdf(renderStatementPage(st)), fallback: '' };
   } catch (err) {
+    const reason = String(err.message || err).split('\n')[0];
     console.error('Statement page could not be printed, using the fallback PDF:', err.message);
-    return statementPdf(st);
+    return { content: await statementPdf(st), fallback: reason };
   }
 }
 
@@ -81,8 +83,8 @@ async function compose(req, { preview }) {
   const attachments = [];
   for (const key of Object.keys(STATEMENTS)) {
     if (!attach[key]) continue;
-    const content = await buildPdf(client, rows, key);
-    if (content) attachments.push({ key, filename: statementFilename(client, key), content, generated: true });
+    const pdf = await buildPdf(client, rows, key);
+    if (pdf) attachments.push({ key, filename: statementFilename(client, key), content: pdf.content, fallback: pdf.fallback, generated: true });
   }
 
   let extraBytes = 0;
@@ -214,7 +216,7 @@ router.post('/:clientId/preview', async (req, res) => {
       subject: mail.subject,
       html: mail.html,
       recipients,
-      attachments: attachments.map((a) => ({ key: a.key, filename: a.filename, size: a.content.length, generated: a.generated })),
+      attachments: attachments.map((a) => ({ key: a.key, filename: a.filename, size: a.content.length, generated: a.generated, fallback: a.fallback || '' })),
     });
   } catch (err) {
     sendError(res, err);
@@ -227,7 +229,8 @@ router.get('/:clientId/statement/:key', async (req, res) => {
     const { client, rows } = await load(req.params.clientId);
     if (!client) return res.status(404).json({ message: 'Client not found.' });
     if (!client.paymentAccount) return res.status(400).json({ message: 'Set a payment account on the client first.' });
-    const pdf = await buildPdf(client, rows, req.params.key);
+    const built = await buildPdf(client, rows, req.params.key);
+    const pdf = built && built.content;
     if (!pdf) return res.status(404).json({ message: 'No statement for this client.' });
     res.set({
       'Content-Type': 'application/pdf',

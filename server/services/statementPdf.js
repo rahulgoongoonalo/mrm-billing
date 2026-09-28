@@ -160,7 +160,9 @@ function statementPdf(st, { generatedOn = new Date() } = {}) {
         inr(l.total),
       ], { fill: i % 2 ? C.zebra : null, note: notes.join('   ') });
     });
-    row(['Total', inr(st.royaltyTotal), `+${inr(st.feeTotal)}`, `+${inr(st.gstTotal)}`, `-${inr(st.paidTotal)}`, ''], { fill: '#E8F5BD', bold: true });
+    // A zero total carries no direction, so it prints as plain 0.00.
+    const signed = (mark, v) => (Math.abs(v) < 0.005 ? inr(0) : `${mark}${inr(v)}`);
+    row(['Total', inr(st.royaltyTotal), signed('+', st.feeTotal), signed('+', st.gstTotal), signed('-', st.paidTotal), ''], { fill: '#E8F5BD', bold: true });
 
     if (doc.y + 26 > bottom()) { doc.addPage(); letterhead(); }
     const cy = doc.y;

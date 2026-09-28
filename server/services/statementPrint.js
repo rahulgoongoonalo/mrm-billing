@@ -7,20 +7,42 @@
 // cannot start (missing on the host, or missing system libraries), callers
 // fall back to the simpler pdfkit statement, so mail never breaks over it.
 //
-// PUPPETEER_EXECUTABLE_PATH points at a system Chrome/Chromium if the one
-// puppeteer downloads cannot be used.
+// Which Chrome: PUPPETEER_EXECUTABLE_PATH if set, else the one puppeteer
+// downloaded, else a Chrome/Chromium already installed on the machine.
+
+const fs = require('fs');
+
+const SYSTEM_BROWSERS = [
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
+];
+
+const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
 
 let browserPromise = null;
 
+async function launch() {
+  const puppeteer = require('puppeteer');
+  // --no-sandbox: servers often run as root, where Chrome's sandbox refuses to start.
+  const open = (executablePath) => puppeteer.launch({ headless: true, executablePath, args: LAUNCH_ARGS });
+
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return open(process.env.PUPPETEER_EXECUTABLE_PATH);
+
+  try {
+    return await open(undefined);
+  } catch (err) {
+    const installed = SYSTEM_BROWSERS.find((p) => fs.existsSync(p));
+    if (!installed) throw err;
+    return open(installed);
+  }
+}
+
 function getBrowser() {
   if (!browserPromise) {
-    const puppeteer = require('puppeteer');
-    browserPromise = puppeteer.launch({
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      // --no-sandbox: servers often run as root, where Chrome's sandbox refuses to start.
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    }).then((browser) => {
+    browserPromise = launch().then((browser) => {
       // A crashed browser is replaced on the next print rather than reused.
       browser.on('disconnected', () => { browserPromise = null; });
       return browser;

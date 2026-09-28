@@ -364,6 +364,12 @@ function MailWizard({ clientId, month, year, onClose }) {
           </dd>
         </div>
       </dl>
+      {preview.attachments.some((a) => a.fallback) && (
+        <div className="mw-banner warn">
+          <b>Simplified PDF.</b> The server could not print the statement page (Chrome is not available there),
+          so a simpler PDF with the same figures is attached. Reason: <code>{preview.attachments.find((a) => a.fallback).fallback}</code>
+        </div>
+      )}
       {pdfView && (
         <iframe className="mw-pdf" title="Statement PDF" src={pdfView.url} />
       )}
