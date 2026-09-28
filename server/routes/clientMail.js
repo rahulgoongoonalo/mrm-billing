@@ -13,7 +13,7 @@ const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { authenticateToken } = require('../middleware/auth');
 const { getClientTransporter } = require('../services/emailService');
-const { buildStatement, calOrder } = require('../services/statementBuilder');
+const { buildStatement, calOrder, statementUrl } = require('../services/statementBuilder');
 const { statementPdf, TITLES } = require('../services/statementPdf');
 const { htmlToPdf } = require('../services/statementPrint');
 const { renderStatementPage } = require('./statements');
@@ -200,6 +200,8 @@ router.get('/:clientId/check', async (req, res) => {
       context,
       types: describeTypes(client, context),
       defaultCc: ACCOUNTS_EMAIL,
+      // The statement pages, so the wizard can open one to save as PDF by hand.
+      statementLinks: { full: statementUrl(client.clientId, 'full'), outstanding: statementUrl(client.clientId, 'outstanding') },
       recipients,
       history,
     });
