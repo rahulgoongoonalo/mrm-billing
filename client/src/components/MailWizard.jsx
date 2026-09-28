@@ -188,7 +188,11 @@ function MailWizard({ clientId, month, year, onClose }) {
       <b>Test mode.</b> Mail goes to <code>{recipients.to.join(', ')}</code> instead of the client, marked [TEST].
       {recipients.intendedTo.length > 0 && <> In live mode it would go to <code>{recipients.intendedTo.join(', ')}</code>.</>}
     </div>
-  ) : null);
+  ) : (
+    <div className="mw-banner live">
+      <b>Live.</b> This mail will be sent to the client at <code>{recipients.to.join(', ')}</code>.
+    </div>
+  ));
 
   const stepCheck = () => (
     <>

@@ -1538,6 +1538,7 @@ body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg-p
 .mw-banner { padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
 .mw-banner code { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .mw-banner.warn { background: rgba(240, 160, 64, 0.12); border: 1px solid rgba(240, 160, 64, 0.4); color: var(--accent-orange); }
+.mw-banner.live { background: rgba(146, 208, 80, 0.1); border: 1px solid rgba(146, 208, 80, 0.4); color: var(--accent-green); }
 .mw-banner.danger { background: rgba(240, 64, 64, 0.1); border: 1px solid rgba(240, 64, 64, 0.4); color: var(--accent-red); }
 .mw-error { margin: 14px 0 0; }
 
