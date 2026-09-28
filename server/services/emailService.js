@@ -4,26 +4,37 @@ let smtpTransporter = null;
 
 // SMTP transport (Gmail) — used locally / as a fallback when BREVO_API_KEY is
 // not set. Pinned to 465 (implicit TLS) since some hosts block outbound 587.
+const gmailTransport = (user, pass) => nodemailer.createTransport({
+  service: 'gmail',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  auth: { user, pass },
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 10000,
+  socketTimeout: 20000
+});
+
 const getSmtpTransporter = () => {
-  if (!smtpTransporter) {
-    smtpTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      tls: {
-        rejectUnauthorized: false
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 10000,
-      socketTimeout: 20000
-    });
-  }
+  if (!smtpTransporter) smtpTransporter = gmailTransport(process.env.SMTP_USER, process.env.SMTP_PASS);
   return smtpTransporter;
+};
+
+// Client mail can be sent straight from MRM's own Google Workspace mailbox
+// (accounts@...) when CLIENT_SMTP_USER / CLIENT_SMTP_PASS (an app password)
+// are set. Google then sends it as that mailbox, so no DNS set-up is needed
+// and each mail lands in its Sent folder. Otherwise client mail uses the
+// normal transport like everything else.
+let clientTransporter = null;
+const getClientTransporter = () => {
+  const user = process.env.CLIENT_SMTP_USER;
+  const pass = process.env.CLIENT_SMTP_PASS;
+  if (!user || !pass) return getTransporter();
+  if (!clientTransporter) clientTransporter = gmailTransport(user, pass);
+  return clientTransporter;
 };
 
 // "MRM Billing <a@b.com>" -> { name: 'MRM Billing', email: 'a@b.com' }
@@ -43,8 +54,10 @@ function parseRecipients(to) {
 }
 
 // Send via Brevo's transactional HTTP API (port 443) — bypasses hosts that
-// block outbound SMTP. Same call signature as nodemailer's sendMail.
-async function brevoSendMail({ from, to, subject, html }) {
+// block outbound SMTP. Same call signature as nodemailer's sendMail, including
+// cc, replyTo and attachments ({ filename, content: Buffer }).
+async function brevoSendMail({ from, to, cc, replyTo, subject, html, text, attachments }) {
+  const ccList = parseRecipients(cc);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -55,8 +68,17 @@ async function brevoSendMail({ from, to, subject, html }) {
     body: JSON.stringify({
       sender: parseSender(from || process.env.EMAIL_FROM),
       to: parseRecipients(to),
+      ...(ccList.length ? { cc: ccList } : {}),
+      ...(replyTo ? { replyTo: parseSender(replyTo) } : {}),
       subject,
-      htmlContent: html
+      htmlContent: html,
+      ...(text ? { textContent: text } : {}),
+      ...(attachments && attachments.length ? {
+        attachment: attachments.map((a) => ({
+          name: a.filename,
+          content: Buffer.from(a.content).toString('base64')
+        }))
+      } : {})
     })
   });
   if (!res.ok) {
@@ -67,7 +89,7 @@ async function brevoSendMail({ from, to, subject, html }) {
 }
 
 // Drop-in transporter: Brevo HTTP API when BREVO_API_KEY is set, else SMTP.
-// Both expose sendMail({ from, to, subject, html }) so call sites don't change.
+// Both expose sendMail({ from, to, cc, replyTo, subject, html, attachments }) so call sites don't change.
 const getTransporter = () => {
   if (process.env.BREVO_API_KEY) {
     return { sendMail: brevoSendMail };
@@ -118,6 +140,7 @@ const sendPasswordResetEmail = async (email, token, name) => {
 
 module.exports = {
   getTransporter,
+  getClientTransporter,
   sendVerificationEmail,
   sendPasswordResetEmail
 };

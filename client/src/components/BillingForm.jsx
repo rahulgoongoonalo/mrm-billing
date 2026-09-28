@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { useBillingForm } from '../hooks/useBillingForm';
 import RoyaltyDetailModal from './RoyaltyDetailModal';
 import PRSDetailModal from './PRSDetailModal';
+import MailWizard from './MailWizard';
 import { SOCIETY_FIELDS, commissionSummary } from '../utils/clientProfile';
 
 const formatCurrency = (amount) => {
@@ -44,6 +45,8 @@ function BillingForm() {
 
   const [iprsModalOpen, setIprsModalOpen] = useState(false);
   const [prsModalOpen, setPrsModalOpen] = useState(false);
+  // Submitting opens the mail wizard; nothing is mailed unless it is walked through.
+  const [mailOpen, setMailOpen] = useState(false);
 
   const { financialYear } = settings;
   const year = ['jan', 'feb', 'mar'].includes(currentMonth)
@@ -118,7 +121,10 @@ function BillingForm() {
   };
 
   const onSubmit = async () => {
-    try { await handleSubmit(); } catch (error) {
+    try {
+      await handleSubmit();
+      setMailOpen(true);
+    } catch (error) {
       if (!error.response) showToast(error.message, 'error');
     }
   };
@@ -607,9 +613,18 @@ function BillingForm() {
             </button>
           </>
         ) : (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-            This entry has been submitted. Click "Edit Entry" above to make changes.
-          </span>
+          <>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginRight: 'auto', alignSelf: 'center' }}>
+              This entry has been submitted. Click "Edit Entry" above to make changes.
+            </span>
+            <button className="btn btn-primary" onClick={() => setMailOpen(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <path d="m22 7-10 6L2 7"></path>
+              </svg>
+              Send Mail
+            </button>
+          </>
         )}
       </div>
 
@@ -647,6 +662,14 @@ function BillingForm() {
         />
       )}
 
+      {mailOpen && (
+        <MailWizard
+          clientId={selectedClient.clientId}
+          month={currentMonth}
+          year={year}
+          onClose={() => setMailOpen(false)}
+        />
+      )}
     </main>
   );
 }

@@ -36,14 +36,6 @@ const royaltyOf = (e) => SOCIETIES.reduce((sum, s) => sum + (e[SOCIETY_FIELDS[s]
 const AUTOMATIC = 'Automatic recalculation';
 const accountOf = (e) => e.lastEditedByEmail || AUTOMATIC;
 
-// What happened the last time this month's statement was mailed to the client.
-const mailStateOf = (e) => {
-  const log = e.mailLog || [];
-  if (!log.length) return { state: 'none', last: null, attempts: 0 };
-  const last = log[log.length - 1];
-  return { state: last.ok ? 'sent' : 'failed', last, attempts: log.length };
-};
-
 const timeOnly = (value) =>
   new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
@@ -55,7 +47,6 @@ function EntriesPage() {
   const [month, setMonth] = useState('all');
   const [account, setAccount] = useState('all');
   const [period, setPeriod] = useState('all');
-  const [mail, setMail] = useState('all');
   const [limit, setLimit] = useState(PAGE);
 
   useEffect(() => {
@@ -106,9 +97,6 @@ function EntriesPage() {
       clients: new Set(list.map((e) => e.clientId)).size,
       people: new Set(list.filter((e) => e.lastEditedByEmail).map((e) => e.lastEditedByEmail)).size,
       touchedToday: list.filter((e) => dayKey(e.updatedAt || e.createdAt) === today).length,
-      mailed: list.filter((e) => mailStateOf(e).state === 'sent').length,
-      mailFailed: list.filter((e) => mailStateOf(e).state === 'failed').length,
-      awaitingMail: list.filter((e) => e.status === 'submitted' && mailStateOf(e).state === 'none').length,
     };
   }, [allEntries]);
 
@@ -121,11 +109,6 @@ function EntriesPage() {
         if (status !== 'all' && (e.status || 'draft') !== status) return false;
         if (month !== 'all' && e.month !== month) return false;
         if (account !== 'all' && accountOf(e) !== account) return false;
-        if (mail !== 'all') {
-          const m = mailStateOf(e).state;
-          if (mail === 'pending' && !(m === 'none' && e.status === 'submitted')) return false;
-          if (mail !== 'pending' && m !== mail) return false;
-        }
         const stamp = e.updatedAt || e.createdAt;
         if (period === 'today' && dayKey(stamp) !== today) return false;
         if (period === 'week' && new Date(stamp) < weekAgo) return false;
@@ -141,7 +124,7 @@ function EntriesPage() {
         const bt = new Date(b.updatedAt || b.createdAt || 0).getTime();
         return bt - at;
       });
-  }, [allEntries, search, status, month, account, period, mail]);
+  }, [allEntries, search, status, month, account, period]);
 
   // Newest first, broken into the day each entry was last saved.
   const days = useMemo(() => {
@@ -158,7 +141,7 @@ function EntriesPage() {
     return out;
   }, [filtered, limit]);
 
-  useEffect(() => { setLimit(PAGE); }, [search, status, month, account, period, mail]);
+  useEffect(() => { setLimit(PAGE); }, [search, status, month, account, period]);
 
   if (loadError) {
     return <div className="empty-state"><h3>Failed to load</h3><p>{loadError}</p></div>;
@@ -189,14 +172,6 @@ function EntriesPage() {
         <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
           <div className="stat-label">Saved Today</div>
           <div className="stat-value">{summary.touchedToday.toLocaleString('en-IN')}</div>
-        </div>
-        <div className="stat-card" style={{ '--card-accent': 'var(--accent-green)' }}>
-          <div className="stat-label">Statement Mailed</div>
-          <div className="stat-value">{summary.mailed.toLocaleString('en-IN')}</div>
-          <div className="stat-sub">
-            {summary.awaitingMail.toLocaleString('en-IN')} not sent
-            {summary.mailFailed > 0 && <span className="stat-bad"> &middot; {summary.mailFailed} failed</span>}
-          </div>
         </div>
       </div>
 
@@ -286,12 +261,6 @@ function EntriesPage() {
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
-        <select value={mail} onChange={(e) => setMail(e.target.value)} aria-label="Filter by mail status">
-          <option value="all">Any mail status</option>
-          <option value="sent">Statement mailed</option>
-          <option value="pending">Submitted, not mailed</option>
-          <option value="failed">Mail failed</option>
-        </select>
         <select value={account} onChange={(e) => setAccount(e.target.value)} aria-label="Filter by account">
           <option value="all">All accounts</option>
           {accounts.map((a) => <option key={a.account} value={a.account}>{a.account}</option>)}
@@ -323,7 +292,6 @@ function EntriesPage() {
                   const royalty = royaltyOf(entry);
                   const receipts = (entry.currentMonthReceipt || 0) + (entry.previousMonthReceipt || 0);
                   const tds = (entry.currentMonthTds || 0) + (entry.previousMonthTds || 0);
-                  const m = mailStateOf(entry);
                   return (
                     <div className="entry-card" key={`${entry.clientId}_${entry.month}_${entry.year}`}>
                       <div className="entry-card-top">
@@ -338,17 +306,6 @@ function EntriesPage() {
                           <span className={`status-pill status-pill--${entry.status || 'draft'}`}>
                             {entry.status || 'draft'}
                           </span>
-                          {m.state === 'sent' && (
-                            <span className="status-pill status-pill--mailed" title={`Sent to ${m.last.to}`}>
-                              <Icon name="message" size={11} />
-                              mailed
-                            </span>
-                          )}
-                          {m.state === 'failed' && (
-                            <span className="status-pill status-pill--mailfail" title={m.last.error}>
-                              mail failed
-                            </span>
-                          )}
                         </span>
                       </div>
                       <div className="entry-figures">
@@ -367,16 +324,6 @@ function EntriesPage() {
                         <span>
                           By <strong>{entry.lastEditedByEmail || <em className="auto-account">{AUTOMATIC}</em>}</strong>
                         </span>
-                        {m.state !== 'none' && (
-                          <span className={m.state === 'failed' ? 'mail-line mail-line--bad' : 'mail-line'}>
-                            {m.state === 'sent' ? 'Statement sent ' : 'Statement failed '}
-                            <strong>{formatDateTime(m.last.sentAt)}</strong>
-                            {' to '}<strong>{m.last.to}</strong>
-                            {m.last.isTest && <span className="test-tag">test</span>}
-                            {m.attempts > 1 && <span className="attempt-tag">{m.attempts} attempts</span>}
-                            {m.state === 'failed' && m.last.error && <em> &mdash; {m.last.error}</em>}
-                          </span>
-                        )}
                       </div>
                     </div>
                   );

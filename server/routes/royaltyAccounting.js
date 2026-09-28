@@ -8,7 +8,6 @@ const { excludeInactive } = require('../services/activeClients');
 const { summarise } = require('../services/outstandingSummary');
 const { statementUrl, statementToken, serverUrl } = require('../services/statementBuilder');
 const { newClientsThisMonth } = require('../services/outstandingMail');
-const { sendEntrySubmittedMail } = require('../services/entrySubmittedMail');
 
 router.use(authenticateToken);
 
@@ -358,36 +357,8 @@ router.post('/', async (req, res) => {
       { upsert: true, new: true, runValidators: true }
     );
 
-    // A submitted month is final, so the client is told. The mail service
-    // swallows its own errors, so a mail problem can slow this save down but
-    // never fail it; the outcome is written to the entry's log either way.
-    if (entry.status === 'submitted') {
-      const mail = await sendEntrySubmittedMail(client, entry);
-      if (!mail.skipped) {
-        const logLine = {
-          sentAt: new Date(),
-          to: mail.to || '',
-          intendedTo: mail.intendedTo || '',
-          subject: mail.subject || '',
-          ok: !!mail.ok,
-          isTest: !!mail.isTest,
-          error: mail.error || '',
-          byEmail: req.user?.email || '',
-        };
-        // Written straight to the collection so recording a send does not count
-        // as editing the month.
-        await RoyaltyAccounting.updateOne(
-          { _id: entry._id },
-          {
-            $push: { mailLog: logLine },
-            ...(mail.ok ? { $set: { lastMailSentAt: logLine.sentAt } } : {}),
-          },
-          { timestamps: false }
-        );
-        entry.mailLog = [...(entry.mailLog || []), logLine];
-        if (mail.ok) entry.lastMailSentAt = logLine.sentAt;
-      }
-    }
+    // Submitting no longer mails the client by itself: the entry screen opens
+    // the mail wizard, where the letter is chosen, previewed and sent by hand.
 
     // Cascade: update all subsequent months' previousMonthOutstanding
     if (currentMonthIndex < monthOrder.length - 1) {

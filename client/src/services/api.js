@@ -134,6 +134,20 @@ export const royaltyApi = {
     api.get(`/royalty-accounting/reports/prev-fy-outstanding${financialYear ? `?financialYear=${financialYear}` : ''}`),
 };
 
+// Client mail wizard: check the client, preview a letter, send it.
+export const clientMailApi = {
+  check: (clientId) => api.get(`/client-mail/${encodeURIComponent(clientId)}/check`),
+  preview: (clientId, body) => api.post(`/client-mail/${encodeURIComponent(clientId)}/preview`, body),
+  // key: 'full' | 'outstanding'. Returns the PDF as a Blob.
+  statementPdf: (clientId, key) =>
+    api.get(`/client-mail/${encodeURIComponent(clientId)}/statement/${key}`, { responseType: 'blob' }),
+  send: (clientId, body) => api.post(`/client-mail/${encodeURIComponent(clientId)}/send`, body),
+  // Every mail sent, newest first, with the entry it was sent from.
+  history: () => api.get('/client-mail/history'),
+  // The body of one sent mail, as it went out.
+  historyBody: (entryId, index) => api.get(`/client-mail/history/${entryId}/${index}`),
+};
+
 // Settings API
 export const settingsApi = {
   getAll: () => api.get('/settings'),

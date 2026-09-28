@@ -112,8 +112,8 @@ const royaltyAccountingSchema = new mongoose.Schema({
   lastEditedByEmail: { type: String, default: '' },
   lastEditedByUserId: { type: String, default: '' },
 
-  // Every attempt to mail this month's statement to the client, successful or
-  // not, newest last. Kept on the entry so the All Entries screen can show what
+  // Every mail sent to the client from the mail wizard while on this month,
+  // successful or not, newest last. Kept on the entry so the All Entries screen can show what
   // was sent and when without a second collection.
   mailLog: {
     type: [{
@@ -121,11 +121,19 @@ const royaltyAccountingSchema = new mongoose.Schema({
       sentAt: { type: Date, default: Date.now },
       to: { type: String, default: '' },
       intendedTo: { type: String, default: '' },
+      cc: { type: String, default: '' },
       subject: { type: String, default: '' },
+      // historical | regular | catalogue (empty on mails from before the wizard)
+      mailType: { type: String, default: '' },
+      attachments: { type: [String], default: [] },
       ok: { type: Boolean, default: false },
       isTest: { type: Boolean, default: true },
       error: { type: String, default: '' },
-      byEmail: { type: String, default: '' }
+      byEmail: { type: String, default: '' },
+      from: { type: String, default: '' },
+      // The mail exactly as sent, so Mail History can show it. Empty on mails
+      // sent before bodies were recorded.
+      html: { type: String, default: '' }
     }],
     default: []
   },
