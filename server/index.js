@@ -31,9 +31,6 @@ app.use(cors({
     ? ['https://billing.musicrightsmanagement.in', 'https://mrm-billing.vercel.app']
     : true
 }));
-// Client mail carries uploaded attachments base64-encoded, so it gets a larger
-// body limit. Registered first; the general parser then skips these requests.
-app.use('/api/client-mail', express.json({ limit: '15mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

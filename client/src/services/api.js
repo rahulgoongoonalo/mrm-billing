@@ -138,9 +138,6 @@ export const royaltyApi = {
 export const clientMailApi = {
   check: (clientId) => api.get(`/client-mail/${encodeURIComponent(clientId)}/check`),
   preview: (clientId, body) => api.post(`/client-mail/${encodeURIComponent(clientId)}/preview`, body),
-  // key: 'full' | 'outstanding'. Returns the PDF as a Blob.
-  statementPdf: (clientId, key) =>
-    api.get(`/client-mail/${encodeURIComponent(clientId)}/statement/${key}`, { responseType: 'blob' }),
   send: (clientId, body) => api.post(`/client-mail/${encodeURIComponent(clientId)}/send`, body),
   // Every mail sent, newest first, with the entry it was sent from.
   history: () => api.get('/client-mail/history'),

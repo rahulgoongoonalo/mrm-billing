@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { clientMailApi } from '../services/api';
-import { useApp } from '../contexts/AppContext';
 import { MONTH_LABELS, formatCurrency, formatDateTime } from '../utils/format';
 import Icon from './Icon';
 
@@ -22,12 +21,6 @@ const OUTCOME = {
   test: { label: 'Test', hint: 'Went to the test address, not the client' },
   failed: { label: 'Failed', hint: 'Not sent' },
 };
-
-// Statement PDFs are named by kind, so they can be reopened (current figures).
-const statementKey = (filename) => (
-  filename.startsWith('MRM-Statement-of-Account') ? 'full'
-    : filename.startsWith('MRM-Outstanding-Summary') ? 'outstanding' : null
-);
 
 const dayKey = (value) => {
   const d = new Date(value);
@@ -101,25 +94,9 @@ function MailBody({ mail }) {
 }
 
 function Reader({ mail, onBack }) {
-  const { showToast } = useApp();
-  const [opening, setOpening] = useState('');
   const result = outcomeOf(mail);
   const e = mail.entry;
   const from = parseAddress(mail.from);
-
-  const openStatement = async (filename) => {
-    const key = statementKey(filename);
-    if (!key) return;
-    setOpening(filename);
-    try {
-      const { data } = await clientMailApi.statementPdf(e.clientId, key);
-      window.open(URL.createObjectURL(new Blob([data], { type: 'application/pdf' })), '_blank', 'noopener');
-    } catch {
-      showToast('Could not open the statement', 'error');
-    } finally {
-      setOpening('');
-    }
-  };
 
   const figures = [
     ['Royalty', e.royalty],
@@ -167,27 +144,18 @@ function Reader({ mail, onBack }) {
         </div>
       )}
 
+      {/* Only mails sent before attachments were dropped have any; the files
+          themselves were never kept, so just their names are shown. */}
       {mail.attachments.length > 0 && (
         <div className="mh-attachments">
           <div className="mh-section-label">{mail.attachments.length} attachment{mail.attachments.length === 1 ? '' : 's'}</div>
           <div className="mh-att-list">
-            {mail.attachments.map((a) => {
-              const canOpen = !!statementKey(a);
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  className="mh-att"
-                  onClick={() => openStatement(a)}
-                  disabled={!canOpen || opening === a}
-                  title={canOpen ? 'Open this statement (current figures)' : 'Uploaded file - not kept by the app'}
-                >
-                  <span className="mh-att-icon">PDF</span>
-                  <span className="mh-att-name">{a}</span>
-                  {canOpen && <span className="mh-att-open">{opening === a ? '…' : 'Open'}</span>}
-                </button>
-              );
-            })}
+            {mail.attachments.map((a) => (
+              <span key={a} className="mh-att">
+                <span className="mh-att-icon">PDF</span>
+                <span className="mh-att-name">{a}</span>
+              </span>
+            ))}
           </div>
         </div>
       )}
