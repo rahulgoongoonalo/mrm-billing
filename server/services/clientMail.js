@@ -9,7 +9,8 @@
 // Recipients are controlled by the same environment variables as before:
 //
 //   ENTRY_MAIL_TEST_TO   every mail goes here instead of the client, marked TEST.
-//   ENTRY_MAIL_LIVE      'true' (and no test address) sends to the client.
+//   (neither set)        mail goes to the client. Every send is still a
+//                        deliberate click at the end of the wizard.
 //   ENTRY_MAIL_ENABLED   'false' switches sending off entirely.
 
 const fs = require('fs');
@@ -311,13 +312,11 @@ function resolveRecipients(client, cc) {
   const ccList = splitEmails(cc);
   const enabled = process.env.ENTRY_MAIL_ENABLED !== 'false';
   const testTo = (process.env.ENTRY_MAIL_TEST_TO || '').trim();
-  const live = process.env.ENTRY_MAIL_LIVE === 'true';
 
   const base = { intendedTo: clientEmails, intendedCc: ccList };
   if (!enabled) return { ...base, to: [], cc: [], isTest: false, blocked: 'Client mail is switched off on the server (ENTRY_MAIL_ENABLED=false).' };
   // In test mode nothing reaches the client or the CC list.
   if (testTo) return { ...base, to: splitEmails(testTo), cc: [], isTest: true };
-  if (!live) return { ...base, to: [], cc: [], isTest: false, blocked: 'Live sending is not switched on. Set ENTRY_MAIL_LIVE=true (or ENTRY_MAIL_TEST_TO for a test address) on the server.' };
   if (!clientEmails.length) return { ...base, to: [], cc: [], isTest: false, blocked: 'This client has no email address.' };
   return { ...base, to: clientEmails, cc: ccList, isTest: false };
 }

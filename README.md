@@ -223,11 +223,9 @@ CLIENT_SMTP_PASS=your-google-app-password
 CLIENT_MAIL_FROM="Music Rights Management <accounts@musicrightsmanagementindia.com>"
 MAIL_SHERLEY_EMAIL=            # optional: Email line in the mail signature
 
-# Who client mail really goes to:
-#   ENTRY_MAIL_TEST_TO=you@example.com  -> every client mail goes here, marked [TEST]
-#   ENTRY_MAIL_LIVE=true (and no TEST_TO) -> mail goes to the client
-ENTRY_MAIL_TEST_TO=you@example.com
-ENTRY_MAIL_ENABLED=true
+# Client mail goes to the client by default. Optional:
+#   ENTRY_MAIL_TEST_TO=you@example.com -> every client mail goes here instead, marked [TEST]
+#   ENTRY_MAIL_ENABLED=false           -> client mail switched off
 ```
 
 ### Client mail
