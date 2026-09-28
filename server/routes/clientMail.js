@@ -266,7 +266,12 @@ router.post('/:clientId/send', async (req, res) => {
       logLine.ok = true;
     } catch (error) {
       logLine.ok = false;
-      logLine.error = error.message;
+      // A timeout means the mail server was never reached - almost always the
+      // host blocking the port - which the bare message does not say.
+      const unreachable = /timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH/i.test(`${error.code || ''} ${error.message}`);
+      logLine.error = unreachable
+        ? `${error.message} - this server could not reach the mail server (the hosting provider may be blocking the mail port).`
+        : error.message;
     }
 
     // Logged on the month the wizard was opened from, else the latest month.
