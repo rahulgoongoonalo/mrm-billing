@@ -408,6 +408,8 @@ ${sheet(client.name, client.clientId, `<div class="pick">
 }
 
 function page(st) {
+  // A zero total carries no direction, so it prints as plain 0.00, not +0.00 / −0.00.
+  const signed = (mark, v) => (Math.abs(v) < 0.005 ? inr(0) : `${mark}${inr(v)}`);
   const sign = (v) => `${v >= 0 ? '+' : '−'}${inr(Math.abs(v))}`;
   const line = (label, amount, cls = '') => `<li${cls ? ` class="${cls}"` : ''}><span>${esc(label)}</span><b class="${amount >= 0 ? 'up' : 'dn'}">${sign(amount)}</b></li>`;
   const info = (label, amount, cls = 'info') => `<li class="${cls}"><span>${esc(label)}</span><b>${inr(amount)}</b></li>`;
@@ -500,9 +502,9 @@ ${controls()}
     <tr class="sums">
       <td class="mo">Total</td>
       <td class="roy" data-label="${ROY}">${inr(st.royaltyTotal)}</td>
-      <td class="up" data-label="${FEE}">+${inr(st.feeTotal)}</td>
-      <td class="up" data-label="GST charged">+${inr(st.gstTotal)}</td>
-      <td class="dn" data-label="${PAY}">−${inr(st.paidTotal)}</td>
+      <td class="up" data-label="${FEE}">${signed('+', st.feeTotal)}</td>
+      <td class="up" data-label="GST charged">${signed('+', st.gstTotal)}</td>
+      <td class="dn" data-label="${PAY}">${signed('−', st.paidTotal)}</td>
       <td class="blank"></td>
     </tr>
     <tr class="close">
@@ -563,3 +565,6 @@ router.get('/:clientId/outstanding', (req, res) => render(req, res, 'window'));
 router.get('/:clientId/full', (req, res) => render(req, res, 'full'));
 
 module.exports = router;
+// The page builder itself, so the PDF attached to client mail is this exact
+// page printed, not a separate layout that could drift from it.
+module.exports.renderStatementPage = page;
