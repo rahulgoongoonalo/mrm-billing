@@ -102,6 +102,13 @@ export const NAV_GROUPS = [
         subtitle: 'Every saved entry across all months, newest first',
       },
       {
+        id: 'mail-history',
+        label: 'Mail History',
+        icon: 'message',
+        title: 'Mail History',
+        subtitle: 'Every mail sent to clients, with the entry it was sent from',
+      },
+      {
         id: 'export',
         label: 'Export',
         icon: 'download',

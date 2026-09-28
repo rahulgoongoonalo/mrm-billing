@@ -10,6 +10,8 @@ const clientRoutes = require('./routes/clients');
 const royaltyAccountingRoutes = require('./routes/royaltyAccounting');
 const settingsRoutes = require('./routes/settings');
 const statementRoutes = require('./routes/statements');
+const clientMailRoutes = require('./routes/clientMail');
+const path = require('path');
 
 // Import models for initialization
 const Settings = require('./models/Settings');
@@ -29,6 +31,9 @@ app.use(cors({
     ? ['https://billing.musicrightsmanagement.in', 'https://mrm-billing.vercel.app']
     : true
 }));
+// Client mail carries uploaded attachments base64-encoded, so it gets a larger
+// body limit. Registered first; the general parser then skips these requests.
+app.use('/api/client-mail', express.json({ limit: '15mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -45,6 +50,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/royalty-accounting', royaltyAccountingRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/client-mail', clientMailRoutes);
+
+// The logo in client mail signatures (mail clients block inline data: images).
+app.get('/mail-assets/mrm-logo.png', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=604800');
+  res.sendFile(path.join(__dirname, 'assets/mrm-mail-logo.png'));
+});
 
 // Public statement pages linked from the outstanding email (HMAC-guarded, no JWT)
 app.use('/statements', statementRoutes);

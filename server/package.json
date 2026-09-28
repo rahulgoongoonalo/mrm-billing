@@ -1,6 +1,6 @@
 {
   "name": "mrm-billing-server",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "description": "Backend API for MRM Billing Application",
   "main": "index.js",
   "scripts": {
@@ -16,7 +16,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.0.3",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "pdfkit": "^0.15.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

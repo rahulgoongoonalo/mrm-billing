@@ -208,7 +208,35 @@ JWT_SECRET=your-production-jwt-secret
 JWT_REFRESH_SECRET=your-production-refresh-secret
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
+
+# Public address of this server - statement links in mails point here
+SERVER_URL=https://billing-b.musicrightsmanagement.in
+
+# Internal mail (daily outstanding report, login emails)
+BREVO_API_KEY=your-brevo-api-key
+EMAIL_FROM="MRM Billing <sender@example.com>"
+
+# Client mail (mail wizard): sent from the accounts@ Google Workspace mailbox.
+# CLIENT_SMTP_PASS is a Google app password for that mailbox.
+CLIENT_SMTP_USER=accounts@musicrightsmanagementindia.com
+CLIENT_SMTP_PASS=your-google-app-password
+CLIENT_MAIL_FROM="Music Rights Management <accounts@musicrightsmanagementindia.com>"
+MAIL_SHERLEY_EMAIL=            # optional: Email line in the mail signature
+
+# Who client mail really goes to:
+#   ENTRY_MAIL_TEST_TO=you@example.com  -> every client mail goes here, marked [TEST]
+#   ENTRY_MAIL_LIVE=true (and no TEST_TO) -> mail goes to the client
+ENTRY_MAIL_TEST_TO=you@example.com
+ENTRY_MAIL_ENABLED=true
 ```
+
+### Client mail
+Submitting an entry opens the mail wizard: it checks the client record is
+complete (email, phone, GST ID, society, commission rate, payment account),
+lets you pick one of three letters (historical outstanding, regular payer,
+membership & catalogue), fill in its details and attachments, preview it with
+its statement PDFs, and send it. Every mail sent is kept on the Mail History
+page, exactly as it went out.
 
 ---
 

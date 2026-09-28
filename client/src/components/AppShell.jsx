@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import DataEntryPage from './DataEntryPage';
 import EntriesPage from './EntriesPage';
+import MailHistoryPage from './MailHistoryPage';
 import ExportPage from './ExportPage';
 import SettingsPage from './SettingsPage';
 import ReportsPanel from './ReportsPanel';
@@ -60,6 +61,7 @@ function AppShell() {
         <main className="app-content">
           {view === 'data-entry' && <DataEntryPage />}
           {view === 'entries' && <EntriesPage />}
+          {view === 'mail-history' && <MailHistoryPage />}
           {view === 'export' && <ExportPage />}
           {view === 'settings' && <SettingsPage />}
           {REPORT_VIEWS.includes(view) && (
