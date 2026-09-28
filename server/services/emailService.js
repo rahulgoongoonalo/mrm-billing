@@ -28,12 +28,28 @@ const getSmtpTransporter = () => {
 // are set. Google then sends it as that mailbox, so no DNS set-up is needed
 // and each mail lands in its Sent folder. Otherwise client mail uses the
 // normal transport like everything else.
+//
+// Port 587 (STARTTLS), not 465: the live server is on Hetzner Cloud, which
+// blocks outgoing 465 (and 25) by default, so 465 just times out there.
+// CLIENT_SMTP_PORT=465 switches back if a host ever needs it.
 let clientTransporter = null;
 const getClientTransporter = () => {
   const user = process.env.CLIENT_SMTP_USER;
   const pass = process.env.CLIENT_SMTP_PASS;
   if (!user || !pass) return getTransporter();
-  if (!clientTransporter) clientTransporter = gmailTransport(user, pass);
+  if (!clientTransporter) {
+    const port = parseInt(process.env.CLIENT_SMTP_PORT, 10) || 587;
+    clientTransporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port,
+      secure: port === 465,        // 465 = TLS from the start
+      requireTLS: port !== 465,    // 587 = upgrade to TLS, never send in the clear
+      auth: { user, pass },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000,
+    });
+  }
   return clientTransporter;
 };
 
