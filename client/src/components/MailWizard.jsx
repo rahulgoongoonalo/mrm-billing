@@ -333,6 +333,18 @@ function MailWizard({ clientId, month, year, onClose }) {
           + Add a file{type === 'catalogue' ? ' (approved catalogue, registration-status report)' : ''}
         </label>
       </div>
+      {info.statementLinks && (
+        <div className="mw-manual-pdf">
+          <span>
+            Want the statement exactly as the page prints it? Open the page, press <b>Download as PDF</b>,
+            save it, add it above with <b>+ Add a file</b>, and untick the generated statement.
+          </span>
+          <span className="mw-manual-links">
+            <a href={info.statementLinks.full} target="_blank" rel="noopener noreferrer">Open full statement ↗</a>
+            <a href={info.statementLinks.outstanding} target="_blank" rel="noopener noreferrer">Open outstanding summary ↗</a>
+          </span>
+        </div>
+      )}
     </>
   );
 
