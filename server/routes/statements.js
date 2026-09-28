@@ -36,8 +36,8 @@ const inr = (v) => {
 const STYLE = `
 :root{
   --ink:#16202e; --muted:#5f6b7c; --faint:#98a2b3; --line:#e2e8f0; --hair:#edf1f6;
-  --navy:#15803D; --blue:#16A34A; --gold:#4ADE80; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#e8f1ec;
-  --tint:#f3faf6;
+  --accent:#84B179; --navy:#3F6B35; --blue:#5E8F52; --gold:#A2CB8B; --green:#1F6B24; --red:#B01414; --paper:#fff; --bg:#eef5e8;
+  --tint:#f7fbf0;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -57,7 +57,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 
 /* letterhead */
 .lh{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
-  padding:24px 34px 12px;border-bottom:2px solid var(--navy);position:relative;margin-bottom:3px}
+  padding:24px 34px 12px;border-bottom:2px solid var(--accent);position:relative;margin-bottom:3px}
 .lh::after{content:"";position:absolute;left:0;right:0;bottom:-5px;border-bottom:1px solid var(--gold)}
 .brand{display:flex;align-items:center;gap:11px;min-width:0}
 .logo{display:block;height:46px;width:auto;flex-shrink:0}
@@ -79,7 +79,7 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .contact div{display:flex;align-items:baseline;gap:6px;min-width:0}
 .contact dt{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
 .contact dd{margin:0;font-size:12px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.balance{text-align:right;min-width:220px;padding:12px 16px;border:1px solid var(--line);border-top:3px solid var(--navy);background:var(--tint)}
+.balance{text-align:right;min-width:220px;padding:12px 16px;border:1px solid var(--line);border-top:3px solid var(--accent);background:var(--tint)}
 .balance .cap{font-size:9.5px;text-transform:uppercase;letter-spacing:.9px;color:var(--muted);font-weight:600}
 .balance .amt{display:block;margin-top:3px;font-size:28px;font-weight:700;color:var(--navy);letter-spacing:-.6px;line-height:1.1}
 .balance .amt.zero{color:var(--green)}
@@ -109,13 +109,13 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 
 /* ledger: month | royalty | service fees | invoices & GST | payments | balance */
 .led{width:100%;border-collapse:collapse;border:1px solid var(--line)}
-.led thead th{position:sticky;top:0;z-index:2;background:var(--navy);color:#fff;font-size:10px;font-weight:600;
+.led thead th{position:sticky;top:0;z-index:2;background:var(--accent);color:var(--ink);font-size:10px;font-weight:600;
   letter-spacing:.5px;text-transform:uppercase;text-align:left;padding:9px 10px;vertical-align:middle;line-height:1.3}
 .led thead th.r{text-align:right}
 .led thead th small{display:block;font-size:9px;font-weight:500;letter-spacing:.2px;text-transform:none;opacity:.75}
 .led tbody td{padding:7px 10px;border-bottom:1px solid var(--hair);vertical-align:top}
-.led tbody tr:nth-child(even) td{background:#f8fcf9}
-.led tbody tr:hover td{background:#eff9f2}
+.led tbody tr:nth-child(even) td{background:#f8fbf3}
+.led tbody tr:hover td{background:#eef7e6}
 .led td+td{border-left:1px solid var(--hair)}
 .led td.mo{width:70px;white-space:nowrap;font-weight:700;color:var(--navy);font-size:12.5px}
 .led td.roy{width:160px}
@@ -143,14 +143,14 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .up,.ln li b.up{color:var(--green)}
 .dn,.ln li b.dn{color:var(--red)}
 
-.led tfoot td{background:#e2f3e8;border-top:2px solid var(--navy);font-weight:700;color:var(--navy);padding:9px 10px;vertical-align:middle}
+.led tfoot td{background:#E8F5BD;border-top:2px solid var(--accent);font-weight:700;color:var(--navy);padding:9px 10px;vertical-align:middle}
 .led tfoot tr.sums td{text-align:right;font-size:13px}
 .led tfoot tr.sums td.mo{text-align:left}
 .led tfoot tr.sums td.roy{color:var(--blue)}
-.led tfoot tr.close td{border-top:1px solid #c3e3cf;background:var(--navy);color:#fff}
+.led tfoot tr.close td{border-top:1px solid #C7EABB;background:var(--accent);color:var(--ink)}
 .led tfoot .lead{font-size:12.5px;text-align:right}
 .ctot{margin-left:16px;font-size:17px;white-space:nowrap}
-.led tfoot tr.close .ctot i{color:rgba(255,255,255,.6)}
+.led tfoot tr.close .ctot i{color:rgba(22,32,46,.6)}
 
 /* remittance details */
 .bank{margin:16px 0 0;border:1px solid var(--line);page-break-inside:avoid;break-inside:avoid}
@@ -179,7 +179,7 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .pick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .pick-card{display:block;padding:16px 18px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:inherit;
   background:#fafdfb;transition:border-color .15s,box-shadow .15s}
-.pick-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(18,146,90,.14)}
+.pick-card:hover{border-color:var(--blue);box-shadow:0 4px 16px rgba(132,177,121,.3)}
 .pick-card b{display:block;font-size:15px;color:var(--navy)}
 .pick-card span{display:block;margin-top:4px;font-size:12.5px;color:var(--muted)}
 .pick-card em{display:inline-block;margin-top:12px;font-style:normal;font-size:12.5px;font-weight:600;color:var(--blue)}
@@ -242,12 +242,12 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
     font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--faint)}
   .led td.nil{display:none}
   .ln li{font-size:12.5px}
-  .led tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:6px;background:#ecf8f0}
+  .led tr:nth-child(n) td.roy{grid-area:roy;margin-top:10px;padding:7px 10px;border:none;border-radius:6px;background:#eef7e6}
   .led td.roy::before{content:attr(data-label);float:left;font-size:11.5px;color:var(--muted)}
   .rt{font-size:13px}
   .rb{margin-top:4px;clear:both}
 
-  .led tfoot tr{display:block;padding:12px 16px;background:#e2f3e8;border-top:2px solid var(--navy)}
+  .led tfoot tr{display:block;padding:12px 16px;background:#E8F5BD;border-top:2px solid var(--accent)}
   .led tr:nth-child(n) td{width:auto}
   .led tfoot tr.sums{display:grid;grid-template-columns:1fr;grid-template-areas:none;gap:6px}
   .led tfoot tr.sums td,.led tfoot tr:nth-child(n) td.roy{grid-area:auto;display:flex;justify-content:space-between;align-items:baseline;
@@ -255,7 +255,7 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .led tfoot tr.sums td.roy::before{float:none}
   .led tfoot tr.sums td::before{content:attr(data-label);font-weight:600;color:var(--muted);font-size:12px}
   .led tfoot tr.sums td.mo,.led tfoot tr.sums td.blank{display:none}
-  .led tfoot tr.close{border-top:none;background:var(--navy)}
+  .led tfoot tr.close{border-top:none;background:var(--accent)}
   .led tfoot td.lead{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:12.5px;line-height:1.35}
   .ctot{margin-left:0;flex:none;font-size:17px}
   .bank dl{grid-template-columns:1fr}
@@ -271,7 +271,7 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
   .card{box-shadow:none;border:none;border-radius:0;overflow:visible}
   .bar{display:none}
 
-  .frame{display:block;position:fixed;top:6mm;left:6mm;right:6mm;bottom:6mm;border:3px double var(--navy);pointer-events:none}
+  .frame{display:block;position:fixed;top:6mm;left:6mm;right:6mm;bottom:6mm;border:3px double var(--accent);pointer-events:none}
   .sheet{display:table}
   .sheet>thead{display:table-header-group}
   .sheet>tbody{display:table-row-group}
@@ -455,7 +455,7 @@ ${sheet(st.clientName, st.clientId, `
   <div>
     <div class="to">Statement for</div>
     <h1>${esc(st.clientName)}</h1>
-    <div class="ident"><span class="id">${esc(st.clientId)}</span> &middot; ${esc(st.clientType.replace(/\s+[–-]\s+/, ' : '))}</div>
+    <div class="ident">${esc(st.clientType.replace(/\s+[–-]\s+/, ' : '))}</div>
     <div class="terms">MRM Service Fee Rate: ${esc(st.commissionRate)}% &middot; GST ${esc(st.gstRate)}% &middot; all figures in Rupees</div>
     ${contact ? `<dl class="contact">${contact}</dl>` : ''}
   </div>
