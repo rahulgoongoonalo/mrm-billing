@@ -130,7 +130,6 @@ const MAIL_TYPES = {
         'Amount received',
         'Applicable professional fees, taxes or deductions',
         'Net amount payable to you',
-        'Payment date',
         'TDS deducted',
         'Closing balance, if any',
       ],
