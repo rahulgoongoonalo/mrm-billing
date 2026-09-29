@@ -4,7 +4,15 @@ import { useBillingForm } from '../hooks/useBillingForm';
 import RoyaltyDetailModal from './RoyaltyDetailModal';
 import PRSDetailModal from './PRSDetailModal';
 import MailWizard from './MailWizard';
-import { SOCIETY_FIELDS, commissionSummary } from '../utils/clientProfile';
+import { SOCIETIES, SOCIETY_FIELDS, commissionSummary } from '../utils/clientProfile';
+
+// Societies entered as one amount (IPRS and PRS have their own receipt lines),
+// in the order the form shows them.
+const SINGLE_AMOUNT_SOCIETIES = ['Sound Exchange', 'ISAMRA', 'ASCAP', 'BMI', 'SOCAN', 'PPL', 'MLC', 'IMRO'];
+
+const shortDate = (value) => (value
+  ? new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  : '—');
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -32,6 +40,7 @@ function BillingForm() {
     carryForwardOverride,
     unlockCarryForward,
     handleInputChange,
+    setSocietyDate,
     clearForm,
     handleSaveAsDraft,
     handleSubmit,
@@ -72,7 +81,7 @@ function BillingForm() {
 
   // With one rate for everything, say it once. With per-society rates, name each
   // one the client actually holds - a single "15%" was misleading.
-  const memberList = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL']
+  const memberList = SOCIETIES
     .filter((s) => societyAccess[s]?.isMember);
   const commissionSubtitle = isPerSociety && memberList.length
     ? `Auto-calculated at ${memberList.map((s) => `${s} ${rateFor(s)}%`).join(', ')}`
@@ -109,6 +118,33 @@ function BillingForm() {
             disabled={isReadOnly || blocked}
           />
         </div>
+        {!blocked && renderSocietyDates(society)}
+      </div>
+    );
+  };
+
+  // When the royalty came in, and when the email about it arrived.
+  const renderSocietyDates = (society) => {
+    const d = formData.societyDates?.[society] || {};
+    if (isReadOnly) {
+      if (!d.receivedDate && !d.emailDate) return null;
+      return (
+        <div className="society-dates is-read">
+          <span>Received <b>{shortDate(d.receivedDate)}</b></span>
+          <span>Email <b>{shortDate(d.emailDate)}</b></span>
+        </div>
+      );
+    }
+    return (
+      <div className="society-dates">
+        <label>
+          <span>Received on</span>
+          <input type="date" value={d.receivedDate || ''} onChange={(e) => setSocietyDate(society, 'receivedDate', e.target.value)} />
+        </label>
+        <label>
+          <span>Email received</span>
+          <input type="date" value={d.emailDate || ''} onChange={(e) => setSocietyDate(society, 'emailDate', e.target.value)} />
+        </label>
       </div>
     );
   };
@@ -303,7 +339,7 @@ function BillingForm() {
                 )}
               </div>
             )}
-            {['Sound Exchange', 'ISAMRA', 'ASCAP', 'BMI', 'SOCAN', 'PPL', 'MLC'].map(renderSocietyAmount)}
+            {SINGLE_AMOUNT_SOCIETIES.map(renderSocietyAmount)}
           </div>
         </div>
 
@@ -333,48 +369,17 @@ function BillingForm() {
                 <input type="number" value={calculations.prsCommission.toFixed(2)} readOnly />
               </div>
             </div>
-            <div className="input-group calculated">
-              <label>Sound Exchange Commission{isPerSociety && <span className="rate-chip">{rateFor('Sound Exchange')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.soundExchangeCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>ISAMRA Commission{isPerSociety && <span className="rate-chip">{rateFor('ISAMRA')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.isamraCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>ASCAP Commission{isPerSociety && <span className="rate-chip">{rateFor('ASCAP')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.ascapCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>BMI Commission{isPerSociety && <span className="rate-chip">{rateFor('BMI')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.bmiCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>SOCAN Commission{isPerSociety && <span className="rate-chip">{rateFor('SOCAN')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.socanCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>PPL Commission{isPerSociety && <span className="rate-chip">{rateFor('PPL')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.pplCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>MLC Commission{isPerSociety && <span className="rate-chip">{rateFor('MLC')}%</span>}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.mlcCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
+            {SINGLE_AMOUNT_SOCIETIES.map((society) => {
+              const key = SOCIETY_FIELDS[society].commission;
+              return (
+                <div className="input-group calculated" key={society}>
+                  <label>{society} Commission{isPerSociety && <span className="rate-chip">{rateFor(society)}%</span>}</label>
+                  <div className="input-prefix"><span>&#8377;</span>
+                    <input type="number" value={(calculations[key] || 0).toFixed(2)} readOnly />
+                  </div>
+                </div>
+              );
+            })}
             <div className="input-group calculated" style={{ gridColumn: 'span 2' }}>
               <label>Total Commission</label>
               <div className="input-prefix"><span>&#8377;</span>

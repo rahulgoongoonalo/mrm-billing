@@ -8,11 +8,31 @@ const { excludeInactive } = require('../services/activeClients');
 const { summarise } = require('../services/outstandingSummary');
 const { statementUrl, statementToken, serverUrl } = require('../services/statementBuilder');
 const { newClientsThisMonth } = require('../services/outstandingMail');
+const activity = require('../services/activity');
 
 router.use(authenticateToken);
 
 // Month order for financial year (Apr to Mar)
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const { SOCIETIES } = require('../utils/clientProfile');
+
+// Keep only known societies with at least one real date, one row each.
+function cleanSocietyDates(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.reduce((out, row) => {
+    const society = row && row.society;
+    if (!SOCIETIES.includes(society) || seen.has(society)) return out;
+    const receivedDate = DATE_RE.test(row.receivedDate || '') ? row.receivedDate : '';
+    const emailDate = DATE_RE.test(row.emailDate || '') ? row.emailDate : '';
+    if (!receivedDate && !emailDate) return out;
+    seen.add(society);
+    out.push({ society, receivedDate, emailDate });
+    return out;
+  }, []);
+}
 
 // Helper: get the year for a given month in a financial year
 function getYearForMonth(month, financialYear) {
@@ -338,7 +358,9 @@ router.post('/', async (req, res) => {
       socanAmount: data.socanAmount || 0,
       pplAmount: data.pplAmount || 0,
       mlcAmount: data.mlcAmount || 0,
+      imroAmount: data.imroAmount || 0,
       extraAmount: data.extraAmount || 0,
+      societyDates: cleanSocietyDates(data.societyDates),
       currentMonthGstBase: data.currentMonthGstBase || 0,
       previousOutstandingGstBase: data.previousOutstandingGstBase || 0,
       currentMonthReceipt: data.currentMonthReceipt || 0,
@@ -351,11 +373,25 @@ router.post('/', async (req, res) => {
       lastEditedByUserId: req.user?.userId || ''
     };
 
+    const before = await RoyaltyAccounting.findOne({ clientId, month, year }).lean();
+
     const entry = await RoyaltyAccounting.findOneAndUpdate(
       { clientId, month, year },
       entryData,
       { upsert: true, new: true, runValidators: true }
     );
+
+    // Recorded once the cascade is known, so the event can say how many later
+    // months this save recalculated.
+    const logSave = (cascaded = 0) => activity.record(req, {
+      action: activity.entryAction(before, entry),
+      clientId,
+      clientName: client.name,
+      month,
+      year,
+      changes: activity.diffEntry(before, entry),
+      meta: { ...activity.entrySnapshot(entry), ...(cascaded ? { cascaded } : {}) },
+    });
 
     // Submitting no longer mails the client by itself: the entry screen opens
     // the mail wizard, where the letter is chosen, previewed and sent by hand.
@@ -369,6 +405,7 @@ router.post('/', async (req, res) => {
       );
 
       // Return both the saved entry and any cascaded updates
+      await logSave(cascadedEntries.length);
       if (cascadedEntries.length > 0) {
         return res.status(201).json({
           entry,
@@ -396,6 +433,7 @@ router.post('/', async (req, res) => {
             1, // start from May (index 1)
             nextFY
           );
+          await logSave(1 + cascadedEntries.length);
           return res.status(201).json({
             entry,
             cascadedEntries: [nextAprilEntry, ...cascadedEntries]
@@ -404,6 +442,7 @@ router.post('/', async (req, res) => {
       }
     }
 
+    if (currentMonthIndex === monthOrder.length - 1) await logSave(0);
     res.status(201).json({ entry });
   } catch (error) {
     console.error('Error saving royalty accounting entry:', error);
@@ -415,6 +454,7 @@ router.post('/', async (req, res) => {
 // @desc    Update entry by ID
 router.put('/:id', async (req, res) => {
   try {
+    const before = await RoyaltyAccounting.findById(req.params.id).lean();
     const entry = await RoyaltyAccounting.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -424,6 +464,16 @@ router.put('/:id', async (req, res) => {
     if (!entry) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+
+    await activity.record(req, {
+      action: activity.entryAction(before, entry),
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      month: entry.month,
+      year: entry.year,
+      changes: activity.diffEntry(before, entry),
+      meta: activity.entrySnapshot(entry),
+    });
 
     res.json(entry);
   } catch (error) {
@@ -450,6 +500,15 @@ router.delete('/:clientId/:month', async (req, res) => {
     if (!result) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+
+    await activity.record(req, {
+      action: 'entry.deleted',
+      clientId,
+      clientName: result.clientName,
+      month,
+      year,
+      meta: activity.entrySnapshot(result),
+    });
 
     res.json({ message: 'Entry deleted successfully' });
   } catch (error) {
@@ -595,6 +654,7 @@ router.get('/reports/summary', async (req, res) => {
           totalAscap: { $sum: '$ascapAmount' },
           totalPpl: { $sum: '$pplAmount' },
           totalMlc: { $sum: '$mlcAmount' },
+          totalImro: { $sum: '$imroAmount' },
           totalCommission: { $sum: '$totalCommission' },
           totalMonthlyOutstanding: { $sum: '$monthlyOutstanding' },
           totalFinalOutstanding: { $sum: '$totalOutstanding' }

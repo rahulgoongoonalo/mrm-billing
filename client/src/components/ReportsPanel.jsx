@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { royaltyApi } from '../services/api';
+import { royaltyApi, activityApi } from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -14,7 +14,19 @@ import {
   commissionSummary,
   buildClientMasterCsv,
   downloadCsv,
+  SOCIETY_FIELDS as CLIENT_SOCIETY_FIELDS,
 } from '../utils/clientProfile';
+
+// Column order on the reports: the original seven, then the societies added later.
+const REPORT_SOCIETIES = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'BMI', 'SOCAN', 'IMRO'];
+const amtKey = (s) => CLIENT_SOCIETY_FIELDS[s].amount;
+const commKey = (s) => CLIENT_SOCIETY_FIELDS[s].commission;
+const AMOUNT_HEADERS = REPORT_SOCIETIES.map((s) => (s === 'IPRS' ? 'IPRS Amount' : s === 'PRS' ? 'PRS Amount (INR)' : s));
+const COMM_HEADERS = REPORT_SOCIETIES.map((s) => (s === 'Sound Exchange' ? 'Sound Ex. Comm.' : `${s} Comm.`));
+const COMM_SHORT = REPORT_SOCIETIES.map((s) => (s === 'Sound Exchange' ? 'Sound Ex' : s));
+const amountsOf = (e) => REPORT_SOCIETIES.map((s) => e?.[amtKey(s)] || 0);
+const commissionsOf = (e) => REPORT_SOCIETIES.map((s) => e?.[commKey(s)] || 0);
+const royaltyTotal = (e) => amountsOf(e).reduce((a, b) => a + b, 0);
 
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
@@ -170,6 +182,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
   const [masterSociety, setMasterSociety] = useState('all');
   const [masterMissing, setMasterMissing] = useState('all');
   const [expandedClient, setExpandedClient] = useState(null);
+  useEffect(() => {
+    if (editingClient?.clientId) activityApi.view(editingClient.clientId, 'client-master');
+  }, [editingClient?.clientId]);
   const [clientSearch, setClientSearch] = useState('');
 
   const { financialYear } = settings;
@@ -201,6 +216,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
   // Fetch all-FY entries for the selected client (cross-FY breakdown)
   useEffect(() => {
     if (!clientReportClient) { setAllFyClientEntries([]); return; }
+    activityApi.view(clientReportClient, 'client-report');
     let cancelled = false;
     royaltyApi.getAll({ clientId: clientReportClient })
       .then(res => { if (!cancelled) setAllFyClientEntries(Array.isArray(res.data) ? res.data : []); })
@@ -214,7 +230,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
   const [editingContracts, setEditingContracts] = useState(null);
   const [expandedContractClient, setExpandedContractClient] = useState(null);
 
-  const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'ISAMRA', 'PPL', 'MLC', 'Sound Exchange'];
+  const SOCIETIES = CLIENT_SOCIETIES;
   const societyClass = (s) => 'society-' + s.toLowerCase().replace(/\s+/g, '');
   const [showRoyaltyBreakdown, setShowRoyaltyBreakdown] = useState(false);
   const [royaltyBreakdownType, setRoyaltyBreakdownType] = useState('IPRS');
@@ -363,8 +379,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     const totalSoundEx = src.reduce((sum, e) => sum + (e.soundExchangeAmount || 0), 0);
     const totalPpl = src.reduce((sum, e) => sum + (e.pplAmount || 0), 0);
     const totalMlc = src.reduce((sum, e) => sum + (e.mlcAmount || 0), 0);
+    const totalsBySociety = Object.fromEntries(REPORT_SOCIETIES.map((soc) => [soc, src.reduce((sum, e) => sum + (e[amtKey(soc)] || 0), 0)]));
 
-    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl, totalMlc };
+    return { totalClients, totalEntries, draftCount, submittedCount, totalCommission, prevYearOutstanding, totalOutstanding, totalIprs, totalPrs, totalAscap, totalIsamra, totalSoundEx, totalPpl, totalMlc, totalsBySociety };
   }, [clients, entries, dashboardClient, prevFyOutstanding]);
 
   const dateLabel = `${dateFrom}_to_${dateTo}`;
@@ -422,20 +439,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     const last = e[e.length - 1];
     const first = e[0];
     return {
-      iprsAmount: sum(x => x.iprsAmount),
-      prsAmount: sum(x => x.prsAmount),
-      soundExchangeAmount: sum(x => x.soundExchangeAmount),
-      isamraAmount: sum(x => x.isamraAmount),
-      ascapAmount: sum(x => x.ascapAmount),
-      pplAmount: sum(x => x.pplAmount),
-      mlcAmount: sum(x => x.mlcAmount),
-      iprsCommission: sum(x => x.iprsCommission),
-      prsCommission: sum(x => x.prsCommission),
-      soundExchangeCommission: sum(x => x.soundExchangeCommission),
-      isamraCommission: sum(x => x.isamraCommission),
-      ascapCommission: sum(x => x.ascapCommission),
-      pplCommission: sum(x => x.pplCommission),
-      mlcCommission: sum(x => x.mlcCommission),
+      ...Object.fromEntries(REPORT_SOCIETIES.flatMap((soc) => [[amtKey(soc), sum(x => x[amtKey(soc)])], [commKey(soc), sum(x => x[commKey(soc)])]])),
       totalCommission: sum(x => x.totalCommission),
       currentMonthGstBase: sum(x => x.currentMonthGstBase),
       currentMonthGst: sum(x => x.currentMonthGst),
@@ -462,8 +466,8 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     const safeName = clientName.replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 31);
 
     const headers = [
-      'Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC',
-      'Commission Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.',
+      'Month', ...AMOUNT_HEADERS,
+      'Commission Rate', ...COMM_HEADERS,
       'Total Commission',
       'Cur. GST Base', 'Cur. GST', 'Cur. Invoice Total',
       'Prev. GST Base', 'Prev. GST', 'Prev. Invoice Total',
@@ -474,9 +478,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
 
     const dataRows = clientReportEntries.map(e => [
       `${monthLabels[e.month]} ${e.year}`,
-      e.iprsAmount || 0, e.prsAmount || 0, e.soundExchangeAmount || 0, e.isamraAmount || 0, e.ascapAmount || 0, e.pplAmount || 0, e.mlcAmount || 0,
+      ...amountsOf(e),
       `${e.commissionRate || 0}%`,
-      e.iprsCommission || 0, e.prsCommission || 0, e.soundExchangeCommission || 0, e.isamraCommission || 0, e.ascapCommission || 0, e.pplCommission || 0, e.mlcCommission || 0,
+      ...commissionsOf(e),
       e.totalCommission || 0,
       e.currentMonthGstBase || 0, e.currentMonthGst || 0, e.currentMonthInvoiceTotal || 0,
       e.previousOutstandingGstBase || 0, e.previousOutstandingGst || 0, e.previousOutstandingInvoiceTotal || 0,
@@ -490,9 +494,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       const s = clientReportSummary;
       dataRows.push([
         'TOTAL',
-        s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount,
+        ...amountsOf(s),
         '',
-        s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission,
+        ...commissionsOf(s),
         s.totalCommission,
         s.currentMonthGstBase, s.currentMonthGst, s.currentMonthInvoiceTotal,
         s.previousOutstandingGstBase, s.previousOutstandingGst, s.previousOutstandingInvoiceTotal,
@@ -548,17 +552,17 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
 
     // 1. Royalty Amounts
     {
-      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
-      const rows = ee.map(e => [m(e), e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0, e.mlcAmount||0]);
-      if (s) rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount]);
+      const h = ['Month', ...AMOUNT_HEADERS];
+      const rows = ee.map(e => [m(e), ...amountsOf(e)]);
+      if (s) rows.push(['TOTAL', ...amountsOf(s)]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Royalty Amounts');
     }
 
     // 2. Commission Breakdown
     {
-      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.', 'Total Commission'];
-      const rows = ee.map(e => [m(e), `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.mlcCommission||0, e.totalCommission||0]);
-      if (s) rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission, s.totalCommission]);
+      const h = ['Month', 'Rate', ...COMM_HEADERS, 'Total Commission'];
+      const rows = ee.map(e => [m(e), `${e.commissionRate||0}%`, ...commissionsOf(e), e.totalCommission||0]);
+      if (s) rows.push(['TOTAL', '', ...commissionsOf(s), s.totalCommission]);
       XLSX.utils.book_append_sheet(wb, makeSheet(titleLine, infoLine, h, rows), 'Commission');
     }
 
@@ -615,14 +619,8 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         [],
         ['ROYALTY BREAKDOWN'],
         ['Source', 'Amount', 'Commission'],
-        ['IPRS', s?.iprsAmount||0, s?.iprsCommission||0],
-        ['PRS', s?.prsAmount||0, s?.prsCommission||0],
-        ['Sound Exchange', s?.soundExchangeAmount||0, s?.soundExchangeCommission||0],
-        ['ISAMRA', s?.isamraAmount||0, s?.isamraCommission||0],
-        ['ASCAP', s?.ascapAmount||0, s?.ascapCommission||0],
-        ['PPL', s?.pplAmount||0, s?.pplCommission||0],
-        ['MLC', s?.mlcAmount||0, s?.mlcCommission||0],
-        ['Total', (s?.iprsAmount||0)+(s?.prsAmount||0)+(s?.soundExchangeAmount||0)+(s?.isamraAmount||0)+(s?.ascapAmount||0)+(s?.pplAmount||0)+(s?.mlcAmount||0), s?.totalCommission||0],
+        ...REPORT_SOCIETIES.map((soc) => [soc, s?.[amtKey(soc)] || 0, s?.[commKey(soc)] || 0]),
+        ['Total', royaltyTotal(s), s?.totalCommission||0],
       ];
       const ws = XLSX.utils.aoa_to_sheet(summaryData);
       ws['!cols'] = [{ wch: 36 }, { wch: 20 }, { wch: 20 }];
@@ -842,15 +840,8 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       return;
     }
 
-    // Generic royalty types: Sound Exchange, ISAMRA, ASCAP, PPL, MLC
-    const fieldMap = {
-      'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission' },
-      'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission' },
-      'ASCAP': { amount: 'ascapAmount', commission: 'ascapCommission' },
-      'PPL': { amount: 'pplAmount', commission: 'pplCommission' },
-      'MLC': { amount: 'mlcAmount', commission: 'mlcCommission' },
-    };
-    const fields = fieldMap[type];
+    // Every other society is a single amount and its commission.
+    const fields = CLIENT_SOCIETY_FIELDS[type];
     if (!fields) return;
 
     const headers = ['Month', `${type} Amount`, `${type} Commission`];
@@ -919,15 +910,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       const totalPaid = (e.currentMonthReceipt || 0) + (e.currentMonthTds || 0) + (e.previousMonthReceipt || 0) + (e.previousMonthTds || 0);
       const shortfall = Math.max(0, commission - totalPaid);
       // per-source: which royalty sources have unpaid commissions
-      const sources = [
-        { name: 'IPRS', amount: e.iprsAmount || 0, comm: e.iprsCommission || 0 },
-        { name: 'PRS', amount: e.prsAmount || 0, comm: e.prsCommission || 0 },
-        { name: 'Sound Exchange', amount: e.soundExchangeAmount || 0, comm: e.soundExchangeCommission || 0 },
-        { name: 'ISAMRA', amount: e.isamraAmount || 0, comm: e.isamraCommission || 0 },
-        { name: 'ASCAP', amount: e.ascapAmount || 0, comm: e.ascapCommission || 0 },
-        { name: 'PPL', amount: e.pplAmount || 0, comm: e.pplCommission || 0 },
-        { name: 'MLC', amount: e.mlcAmount || 0, comm: e.mlcCommission || 0 },
-      ];
+      const sources = REPORT_SOCIETIES.map((name) => ({ name, amount: e[amtKey(name)] || 0, comm: e[commKey(name)] || 0 }));
       let status = 'none'; // no commission
       if (commission > 0) {
         if (totalPaid <= 0) status = 'unpaid';
@@ -1039,10 +1022,10 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     // ── 1. Royalty Amounts (red-mark unpaid source cells) ──
     if (sel.royalty) {
       addSectionHeader('Royalty Amounts', 'RED cells = royalty source with unpaid commission contributing to outstanding');
-      const sourceNames = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
-      const head = [['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC']];
-      const body = ee.map(e => [m(e), fmtNum(e.iprsAmount), fmtNum(e.prsAmount), fmtNum(e.soundExchangeAmount), fmtNum(e.isamraAmount), fmtNum(e.ascapAmount), fmtNum(e.pplAmount), fmtNum(e.mlcAmount)]);
-      if (s) body.push(['TOTAL', fmtNum(s.iprsAmount), fmtNum(s.prsAmount), fmtNum(s.soundExchangeAmount), fmtNum(s.isamraAmount), fmtNum(s.ascapAmount), fmtNum(s.pplAmount), fmtNum(s.mlcAmount)]);
+      const sourceNames = REPORT_SOCIETIES;
+      const head = [['Month', ...AMOUNT_HEADERS]];
+      const body = ee.map(e => [m(e), ...amountsOf(e).map(fmtNum)]);
+      if (s) body.push(['TOTAL', ...amountsOf(s).map(fmtNum)]);
       autoTable(doc, { ...autoTableDefaults, head, body, didParseCell: makeDidParseCell({ colorAmountCells: true, sourceColumns: sourceNames }) });
       sectionCount++;
     }
@@ -1050,9 +1033,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     // ── 2. Commission Breakdown (red-mark unpaid commission cells) ──
     if (sel.commission) {
       addSectionHeader('Commission Breakdown', 'RED = unpaid commission | ORANGE = partially paid | GREEN = fully paid');
-      const head = [['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex.', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'Total Comm.']];
-      const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, fmtNum(e.iprsCommission), fmtNum(e.prsCommission), fmtNum(e.soundExchangeCommission), fmtNum(e.isamraCommission), fmtNum(e.ascapCommission), fmtNum(e.pplCommission), fmtNum(e.mlcCommission), fmtNum(e.totalCommission)]);
-      if (s) body.push(['TOTAL', '', fmtNum(s.iprsCommission), fmtNum(s.prsCommission), fmtNum(s.soundExchangeCommission), fmtNum(s.isamraCommission), fmtNum(s.ascapCommission), fmtNum(s.pplCommission), fmtNum(s.mlcCommission), fmtNum(s.totalCommission)]);
+      const head = [['Month', 'Rate', ...COMM_SHORT, 'Total Comm.']];
+      const body = ee.map(e => [m(e), `${e.commissionRate||0}%`, ...commissionsOf(e).map(fmtNum), fmtNum(e.totalCommission)]);
+      if (s) body.push(['TOTAL', '', ...commissionsOf(s).map(fmtNum), fmtNum(s.totalCommission)]);
 
       autoTable(doc, {
         ...autoTableDefaults, head, body,
@@ -1168,14 +1151,8 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       doc.text('Royalty Breakdown', 14, finalY);
 
       const breakdownBody = [
-        ['IPRS', fmtNum(s.iprsAmount), fmtNum(s.iprsCommission)],
-        ['PRS', fmtNum(s.prsAmount), fmtNum(s.prsCommission)],
-        ['Sound Exchange', fmtNum(s.soundExchangeAmount), fmtNum(s.soundExchangeCommission)],
-        ['ISAMRA', fmtNum(s.isamraAmount), fmtNum(s.isamraCommission)],
-        ['ASCAP', fmtNum(s.ascapAmount), fmtNum(s.ascapCommission)],
-        ['PPL', fmtNum(s.pplAmount), fmtNum(s.pplCommission)],
-        ['MLC', fmtNum(s.mlcAmount), fmtNum(s.mlcCommission)],
-        ['Total', fmtNum((s.iprsAmount||0)+(s.prsAmount||0)+(s.soundExchangeAmount||0)+(s.isamraAmount||0)+(s.ascapAmount||0)+(s.pplAmount||0)+(s.mlcAmount||0)), fmtNum(s.totalCommission)],
+        ...REPORT_SOCIETIES.map((soc) => [soc, fmtNum(s[amtKey(soc)]), fmtNum(s[commKey(soc)])]),
+        ['Total', fmtNum(royaltyTotal(s)), fmtNum(s.totalCommission)],
       ];
       autoTable(doc, {
         ...autoTableDefaults,
@@ -1367,9 +1344,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         return;
 
       case 'commission':
-        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,MLC,Total Commission\n';
+        csv = `Client ID,Client Name,Month,Year,Commission Rate,${COMM_SHORT.join(',')},Total Commission\n`;
         filteredEntries.forEach(e => {
-          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.mlcCommission || 0},${e.totalCommission || 0}\n`;
+          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${commissionsOf(e).join(',')},${e.totalCommission || 0}\n`;
         });
         filename = `MRM_Commission_Report_${dateLabel}.csv`;
         break;
@@ -1443,9 +1420,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
 
     switch (reportType) {
       case 'commission':
-        csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Ex,ISAMRA,ASCAP,PPL,MLC,Total Commission\n';
+        csv = `Client ID,Client Name,Month,Year,Commission Rate,${COMM_SHORT.join(',')},Total Commission\n`;
         clientEntries.forEach(e => {
-          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsCommission || 0},${e.prsCommission || 0},${e.soundExchangeCommission || 0},${e.isamraCommission || 0},${e.ascapCommission || 0},${e.pplCommission || 0},${e.mlcCommission || 0},${e.totalCommission || 0}\n`;
+          csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${commissionsOf(e).join(',')},${e.totalCommission || 0}\n`;
         });
         filename = `MRM_Commission_${safeName}_${dateLabel}.csv`;
         break;
@@ -1663,28 +1640,12 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
               </div>
             </div>
             <div className="stats-grid">
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-orange)' }}>
-                <div className="stat-label">Total ASCAP</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalAscap)}</div>
-              </div>
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-green)' }}>
-                <div className="stat-label">Total ISAMRA</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalIsamra)}</div>
-              </div>
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-blue)' }}>
-                <div className="stat-label">Total Sound Exchange</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalSoundEx)}</div>
-              </div>
-            </div>
-            <div className="stats-grid">
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-purple)' }}>
-                <div className="stat-label">Total PPL</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalPpl)}</div>
-              </div>
-              <div className="stat-card" style={{ '--card-accent': 'var(--accent-purple)' }}>
-                <div className="stat-label">Total MLC</div>
-                <div className="stat-value">{formatCurrency(dashboardStats.totalMlc)}</div>
-              </div>
+              {REPORT_SOCIETIES.filter((soc) => soc !== 'IPRS' && soc !== 'PRS').map((soc, i) => (
+                <div key={soc} className="stat-card" style={{ '--card-accent': ['var(--accent-orange)', 'var(--accent-green)', 'var(--accent-blue)', 'var(--accent-purple)'][i % 4] }}>
+                  <div className="stat-label">Total {soc}</div>
+                  <div className="stat-value">{formatCurrency(dashboardStats.totalsBySociety[soc])}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -1903,13 +1864,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                               border: '1px solid var(--border)', fontSize: 13,
                             }}
                           >
-                            <option value="IPRS">IPRS</option>
-                            <option value="PRS">PRS</option>
-                            <option value="Sound Exchange">Sound Exchange</option>
-                            <option value="ISAMRA">ISAMRA</option>
-                            <option value="ASCAP">ASCAP</option>
-                            <option value="PPL">PPL</option>
-                            <option value="MLC">MLC</option>
+                            {REPORT_SOCIETIES.map((soc) => <option key={soc} value={soc}>{soc}</option>)}
                           </select>
                         </div>
                         <div style={{ marginBottom: 14 }}>
@@ -2104,9 +2059,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                   <div className="report-header">
                     <h3>Royalty Amounts</h3>
                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                      const h = ['Month', 'IPRS Amount', 'PRS Amount (INR)', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC'];
-                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, e.iprsAmount||0, e.prsAmount||0, e.soundExchangeAmount||0, e.isamraAmount||0, e.ascapAmount||0, e.pplAmount||0, e.mlcAmount||0]);
-                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', s.iprsAmount, s.prsAmount, s.soundExchangeAmount, s.isamraAmount, s.ascapAmount, s.pplAmount, s.mlcAmount]); }
+                      const h = ['Month', ...AMOUNT_HEADERS];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, ...amountsOf(e)]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', ...amountsOf(s)]); }
                       exportSingleTableExcel('Royalty Amounts', h, rows);
                     }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -2118,38 +2073,20 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                       <thead>
                         <tr>
                           <th className="sticky-col">Month</th>
-                          <th>IPRS Amount</th>
-                          <th>PRS Amount (INR)</th>
-                          <th>Sound Exchange</th>
-                          <th>ISAMRA</th>
-                          <th>ASCAP</th>
-                          <th>PPL</th>
-                          <th>MLC</th>
+                          {AMOUNT_HEADERS.map((h) => <th key={h}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
                         {clientReportEntries.map((e, idx) => (
                           <tr key={idx}>
                             <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
-                            <td><span className="amount">{formatCurrency(e.iprsAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.prsAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.soundExchangeAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.isamraAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.ascapAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.pplAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.mlcAmount)}</span></td>
+                            {REPORT_SOCIETIES.map((soc) => <td key={soc}><span className="amount">{formatCurrency(e[amtKey(soc)])}</span></td>)}
                           </tr>
                         ))}
                         {clientReportSummary && (
                           <tr className="summary-row">
                             <td className="sticky-col"><strong>Total</strong></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.iprsAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.prsAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.soundExchangeAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.isamraAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.ascapAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.pplAmount)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.mlcAmount)}</span></td>
+                            {REPORT_SOCIETIES.map((soc) => <td key={soc}><span className="amount">{formatCurrency(clientReportSummary[amtKey(soc)])}</span></td>)}
                           </tr>
                         )}
                       </tbody>
@@ -2162,9 +2099,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                   <div className="report-header">
                     <h3>Commission Breakdown <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--accent-green)' }}>+ Adds to Outstanding</span></h3>
                     <button className="btn btn-secondary btn-sm" onClick={() => {
-                      const h = ['Month', 'Rate', 'IPRS Comm.', 'PRS Comm.', 'Sound Ex. Comm.', 'ISAMRA Comm.', 'ASCAP Comm.', 'PPL Comm.', 'MLC Comm.', 'Total Commission'];
-                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, `${e.commissionRate||0}%`, e.iprsCommission||0, e.prsCommission||0, e.soundExchangeCommission||0, e.isamraCommission||0, e.ascapCommission||0, e.pplCommission||0, e.mlcCommission||0, e.totalCommission||0]);
-                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', '', s.iprsCommission, s.prsCommission, s.soundExchangeCommission, s.isamraCommission, s.ascapCommission, s.pplCommission, s.mlcCommission, s.totalCommission]); }
+                      const h = ['Month', 'Rate', ...COMM_HEADERS, 'Total Commission'];
+                      const rows = clientReportEntries.map(e => [`${monthLabels[e.month]} ${e.year}`, `${e.commissionRate||0}%`, ...commissionsOf(e), e.totalCommission||0]);
+                      if (clientReportSummary) { const s = clientReportSummary; rows.push(['TOTAL', '', ...commissionsOf(s), s.totalCommission]); }
                       exportSingleTableExcel('Commission', h, rows);
                     }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -2177,13 +2114,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                         <tr>
                           <th className="sticky-col">Month</th>
                           <th>Rate</th>
-                          <th>IPRS Comm.</th>
-                          <th>PRS Comm.</th>
-                          <th>Sound Ex. Comm.</th>
-                          <th>ISAMRA Comm.</th>
-                          <th>ASCAP Comm.</th>
-                          <th>PPL Comm.</th>
-                          <th>MLC Comm.</th>
+                          {COMM_HEADERS.map((h) => <th key={h}>{h}</th>)}
                           <th className="col-highlight-green">Total Commission</th>
                         </tr>
                       </thead>
@@ -2192,13 +2123,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                           <tr key={idx}>
                             <td className="sticky-col">{monthLabels[e.month]} {e.year}</td>
                             <td><span className="amount">{e.commissionRate || 0}%</span></td>
-                            <td><span className="amount">{formatCurrency(e.iprsCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.prsCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.soundExchangeCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.isamraCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.ascapCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.pplCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(e.mlcCommission)}</span></td>
+                            {REPORT_SOCIETIES.map((soc) => <td key={soc}><span className="amount">{formatCurrency(e[commKey(soc)])}</span></td>)}
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(e.totalCommission)}</span></td>
                           </tr>
                         ))}
@@ -2206,13 +2131,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                           <tr className="summary-row">
                             <td className="sticky-col"><strong>Total</strong></td>
                             <td></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.iprsCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.prsCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.soundExchangeCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.isamraCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.ascapCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.pplCommission)}</span></td>
-                            <td><span className="amount">{formatCurrency(clientReportSummary.mlcCommission)}</span></td>
+                            {REPORT_SOCIETIES.map((soc) => <td key={soc}><span className="amount">{formatCurrency(clientReportSummary[commKey(soc)])}</span></td>)}
                             <td className="col-highlight-green"><span className="amount positive">{formatCurrency(clientReportSummary.totalCommission)}</span></td>
                           </tr>
                         )}
@@ -2481,7 +2400,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                       >Deselect All</button>
                     </div>
                     {[
-                      { key: 'royalty', label: 'Royalty Amounts', desc: 'IPRS, PRS, Sound Exchange, ISAMRA, ASCAP, PPL, MLC', icon: '🎵' },
+                      { key: 'royalty', label: 'Royalty Amounts', desc: REPORT_SOCIETIES.join(', '), icon: '🎵' },
                       { key: 'commission', label: 'Commission Breakdown', desc: 'Commission rates and per-source commissions', icon: '💰' },
                       { key: 'gst', label: 'GST & Invoice', desc: 'GST base, GST amount, invoice totals', icon: '🧾' },
                       { key: 'receipts', label: 'Receipts & TDS', desc: 'Current/previous receipts and TDS deductions', icon: '📥' },
@@ -2601,13 +2520,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                                   <tr>
                                     <th>Month</th>
                                     <th>Rate</th>
-                                    <th>IPRS</th>
-                                    <th>PRS</th>
-                                    <th>Sound Ex</th>
-                                    <th>ISAMRA</th>
-                                    <th>ASCAP</th>
-                                    <th>PPL</th>
-                                    <th>MLC</th>
+                                    {COMM_SHORT.map((h) => <th key={h}>{h}</th>)}
                                     <th>Total</th>
                                   </tr>
                                 </thead>
@@ -2616,18 +2529,12 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                                     <tr key={idx}>
                                       <td>{monthLabels[entry.month]} {entry.year}</td>
                                       <td><span className="amount">{entry.commissionRate || 0}%</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.iprsCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.prsCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.soundExchangeCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.isamraCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.ascapCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.pplCommission)}</span></td>
-                                      <td><span className="amount">{formatCurrency(entry.mlcCommission)}</span></td>
+                                      {REPORT_SOCIETIES.map((soc) => <td key={soc}><span className="amount">{formatCurrency(entry[commKey(soc)])}</span></td>)}
                                       <td><span className="amount positive">{formatCurrency(entry.totalCommission)}</span></td>
                                     </tr>
                                   ))}
                                   <tr className="summary-row">
-                                    <td colSpan="9"><strong>Total</strong></td>
+                                    <td colSpan={2 + REPORT_SOCIETIES.length}><strong>Total</strong></td>
                                     <td><span className="amount positive">{formatCurrency(clientEntries.reduce((s, e) => s + (e.totalCommission || 0), 0))}</span></td>
                                   </tr>
                                 </tbody>
@@ -3015,6 +2922,15 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
             if (ct.startDate) return 'active';
             return 'none';
           };
+          // A client is expected to hold a contract for each society in its profile.
+          const isMember = (client, society) => (client.societies || []).includes(society);
+          // The societies worth showing for one client: its own, plus any it has a
+          // contract for without being listed as a member.
+          const societiesFor = (client) => SOCIETIES.filter((s) => isMember(client, s) || getContractStatus(client, s) !== 'none');
+          const pillStatus = (client, society) => {
+            const status = getContractStatus(client, society);
+            return status === 'none' && isMember(client, society) ? 'missing' : status;
+          };
           return (
           <div className="report-section active">
             <div className="report-page-header">
@@ -3063,16 +2979,23 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
             {/* Summary Cards */}
             <div className="society-contracts-grid">
               {SOCIETIES.map(society => {
+                const members = activeClients.filter(c => isMember(c, society));
                 const withContract = activeClients.filter(c => (c.contracts || []).some(ct => ct.society === society));
+                const missing = members.filter(c => getContractStatus(c, society) === 'none');
                 const activeContracts = withContract.filter(c => getContractStatus(c, society) === 'active');
                 const expiredContracts = withContract.filter(c => getContractStatus(c, society) === 'expired');
                 return (
                   <div key={society} className={`society-stat-card ${societyClass(society)}`}>
                     <div className="society-name">{society}</div>
                     <div className="society-count">
-                      {withContract.length} <span className="society-total">/ {activeClients.length}</span>
+                      {withContract.length} <span className="society-total">/ {members.length} member{members.length === 1 ? '' : 's'}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {missing.length > 0 && (
+                        <div className="society-missing-count" title="Members of this society with no contract dates entered">
+                          {missing.length} without dates
+                        </div>
+                      )}
                       {activeContracts.length > 0 && (
                         <div className="society-active-count">
                           <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -3114,8 +3037,10 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                 filteredContractClients.map(client => {
                   const isExpanded = expandedContractClient === client.clientId;
                   const clientContracts = client.contracts || [];
-                  const activeCount = SOCIETIES.filter(s => getContractStatus(client, s) === 'active').length;
-                  const expiredCount = SOCIETIES.filter(s => getContractStatus(client, s) === 'expired').length;
+                  const shown = societiesFor(client);
+                  const activeCount = shown.filter(s => getContractStatus(client, s) === 'active').length;
+                  const expiredCount = shown.filter(s => getContractStatus(client, s) === 'expired').length;
+                  const missingCount = shown.filter(s => pillStatus(client, s) === 'missing').length;
 
                   return (
                     <div key={client.clientId} className={`contract-client-card ${isExpanded ? 'expanded' : ''}`}>
@@ -3133,13 +3058,15 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                             <span>{client.type || 'Composer'}</span>
                             {activeCount > 0 && <span style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{activeCount} active</span>}
                             {expiredCount > 0 && <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}>{expiredCount} expired</span>}
+                            {missingCount > 0 && <span style={{ color: 'var(--accent-orange)', fontWeight: 600 }}>{missingCount} without dates</span>}
                           </div>
                         </div>
                         <div className="contract-society-pills">
-                          {SOCIETIES.map(society => {
-                            const status = getContractStatus(client, society);
+                          {shown.length === 0 && <span className="contract-pill none">No societies set</span>}
+                          {shown.map(society => {
+                            const status = pillStatus(client, society);
                             return (
-                              <span key={society} className={`contract-pill ${status}`}>
+                              <span key={society} className={`contract-pill ${status}`} title={status === 'missing' ? `Member of ${society}, no contract dates yet` : undefined}>
                                 {society === 'Sound Exchange' ? 'SE' : society}
                               </span>
                             );
@@ -3153,7 +3080,8 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                       {isExpanded && (
                         <div className="contract-detail">
                           <div className="contract-detail-grid">
-                            {SOCIETIES.map(society => {
+                            {shown.length === 0 && <div className="no-contract">No societies are set for this client in Client Master.</div>}
+                            {shown.map(society => {
                               const contract = clientContracts.find(c => c.society === society);
                               const status = getContractStatus(client, society);
                               return (
@@ -3192,7 +3120,9 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                             <button
                               className="btn btn-primary btn-sm"
                               onClick={() => {
-                                const existingContracts = SOCIETIES.map(society => {
+                                // The client's own societies first, then the rest.
+                                const ordered = [...SOCIETIES].sort((a, b) => Number(isMember(client, b)) - Number(isMember(client, a)));
+                                const existingContracts = ordered.map(society => {
                                   const existing = clientContracts.find(c => c.society === society);
                                   return {
                                     society,

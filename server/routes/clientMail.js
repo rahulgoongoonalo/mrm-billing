@@ -12,6 +12,7 @@ const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { authenticateToken } = require('../middleware/auth');
+const activity = require('../services/activity');
 const { getClientTransporter } = require('../services/emailService');
 const { buildStatement, calOrder, statementUrl } = require('../services/statementBuilder');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
@@ -128,6 +129,8 @@ router.get('/:clientId/check', async (req, res) => {
     const { client, rows } = await load(req.params.clientId);
     if (!client) return res.status(404).json({ message: 'Client not found.' });
 
+    await activity.recordView(req, { clientId: client.clientId, clientName: client.name, where: 'mail-wizard' });
+
     const { checks, ready } = checkClient(client, rows.length);
     const full = rows.length ? buildStatement(client, rows, { mode: 'full' }) : null;
     const context = mailContext(client, full, rows);
@@ -229,6 +232,18 @@ router.post('/:clientId/send', async (req, res) => {
         { timestamps: false }
       );
     }
+
+    await activity.record(req, {
+      action: logLine.ok ? 'mail.sent' : 'mail.failed',
+      clientId: client.clientId,
+      clientName: client.name,
+      month: target?.month || '',
+      year: target?.year,
+      meta: {
+        subject: logLine.subject, mailType: logLine.mailType, to: logLine.to,
+        isTest: logLine.isTest, error: logLine.error || '',
+      },
+    });
 
     if (!logLine.ok) return res.status(502).json({ message: `The mail could not be sent: ${logLine.error}`, log: logLine });
     // The stored copy of the mail is not needed back.

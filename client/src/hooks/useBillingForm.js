@@ -23,7 +23,10 @@ const initialFormState = {
   socanAmount: '',
   pplAmount: '',
   mlcAmount: '',
+  imroAmount: '',
   extraAmount: '',
+  // { [society]: { receivedDate, emailDate } } for the single-amount societies
+  societyDates: {},
 
   // GST & Invoice Inputs
   currentMonthGstBase: '',
@@ -75,6 +78,8 @@ export function useBillingForm() {
         socanAmount: currentEntry.socanAmount || '',
         pplAmount: currentEntry.pplAmount || '',
         mlcAmount: currentEntry.mlcAmount || '',
+        imroAmount: currentEntry.imroAmount || '',
+        societyDates: Object.fromEntries((currentEntry.societyDates || []).map((d) => [d.society, { receivedDate: d.receivedDate || '', emailDate: d.emailDate || '' }])),
         extraAmount: currentEntry.extraAmount || '',
         currentMonthGstBase: currentEntry.currentMonthGstBase || '',
         previousOutstandingGstBase: currentEntry.previousOutstandingGstBase || '',
@@ -284,6 +289,15 @@ export function useBillingForm() {
     setIsDirty(true);
   }, []);
 
+  // Received / email date for one of the single-amount societies.
+  const setSocietyDate = useCallback((society, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      societyDates: { ...prev.societyDates, [society]: { ...(prev.societyDates?.[society] || {}), [field]: value } },
+    }));
+    setIsDirty(true);
+  }, []);
+
   // Clear form
   const clearForm = useCallback(() => {
     setFormData(initialFormState);
@@ -312,6 +326,10 @@ export function useBillingForm() {
     socanAmount: parseFloat(formData.socanAmount) || 0,
     pplAmount: parseFloat(formData.pplAmount) || 0,
     mlcAmount: parseFloat(formData.mlcAmount) || 0,
+    imroAmount: parseFloat(formData.imroAmount) || 0,
+    societyDates: Object.entries(formData.societyDates || {})
+      .map(([society, d]) => ({ society, receivedDate: d.receivedDate || '', emailDate: d.emailDate || '' }))
+      .filter((d) => d.receivedDate || d.emailDate),
     extraAmount: parseFloat(formData.extraAmount) || 0,
     currentMonthGstBase: parseFloat(formData.currentMonthGstBase) || 0,
     previousOutstandingGstBase: parseFloat(formData.previousOutstandingGstBase) || 0,
@@ -413,6 +431,7 @@ export function useBillingForm() {
     isDirty,
     handleInputChange,
     updateField,
+    setSocietyDate,
     clearForm,
     handleSaveAsDraft,
     handleSubmit,

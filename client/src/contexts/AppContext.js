@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import { clientApi, royaltyApi, settingsApi } from '../services/api';
+import { clientApi, royaltyApi, settingsApi, activityApi } from '../services/api';
 
 // Initial state
 const initialState = {
@@ -201,6 +201,7 @@ export function AppProvider({ children }) {
   const selectClient = useCallback((client) => {
     dispatch({ type: ActionTypes.SET_SELECTED_CLIENT, payload: client });
     if (client) {
+      activityApi.view(client.clientId, 'data-entry');
       const key = `${client.clientId}_${state.currentMonth}`;
       dispatch({ type: ActionTypes.SET_CURRENT_ENTRY, payload: state.billingEntries[key] || null });
     }

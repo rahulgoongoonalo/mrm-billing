@@ -11,6 +11,7 @@ const royaltyAccountingRoutes = require('./routes/royaltyAccounting');
 const settingsRoutes = require('./routes/settings');
 const statementRoutes = require('./routes/statements');
 const clientMailRoutes = require('./routes/clientMail');
+const activityRoutes = require('./routes/activity');
 const path = require('path');
 
 // Import models for initialization
@@ -48,6 +49,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/royalty-accounting', royaltyAccountingRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/client-mail', clientMailRoutes);
+app.use('/api/activity', activityRoutes);
 
 // The logo in client mail signatures (mail clients block inline data: images).
 app.get('/mail-assets/mrm-logo.png', (req, res) => {

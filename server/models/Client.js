@@ -139,7 +139,7 @@ const clientSchema = new mongoose.Schema({
   contracts: [{
     society: {
       type: String,
-      enum: ['IPRS', 'PRS', 'ASCAP', 'ISAMRA', 'PPL', 'MLC', 'Sound Exchange'],
+      enum: SOCIETIES,
       required: true
     },
     startDate: {
