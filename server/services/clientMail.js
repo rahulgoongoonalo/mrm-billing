@@ -206,12 +206,12 @@ function checkClient(client, entryCount) {
   add('phone', 'Phone number', phone, !!phone && invalidPhones(phone).length === 0,
     !phone ? 'No phone number recorded' : 'Phone number is not valid');
 
+  // GST ID is optional; only a malformed one blocks the mail.
   const gst = String(client.gstId || '').trim();
-  if (client.paymentAccount === 'non-gst' && !gst) {
-    add('gstId', 'GST ID', 'Not needed - pays into the non-GST account', true);
+  if (!gst) {
+    add('gstId', 'GST ID', 'Not recorded (optional)', true);
   } else {
-    add('gstId', 'GST ID', gst, !!gst && isValidGstId(gst),
-      !gst ? 'No GST ID (set the payment account to "Without GST" if this client has none)' : 'GST ID is not a valid 15-character GSTIN');
+    add('gstId', 'GST ID', gst, isValidGstId(gst), 'GST ID is not a valid 15-character GSTIN');
   }
 
   const societies = (client.societies || []).filter((s) => SOCIETIES.includes(s));

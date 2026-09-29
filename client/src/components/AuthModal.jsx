@@ -331,31 +331,15 @@ const AuthModal = () => {
 
   return (
     <div className="login-screen">
-      <div className="login-glow login-glow--a" aria-hidden="true" />
-      <div className="login-glow login-glow--b" aria-hidden="true" />
-
-      <div className="login-shell">
-        <aside className="login-brand">
-          <div className="login-logo">MRM</div>
-          <h1>MRM Royalty Commission Accounting</h1>
-          <p className="login-brand-lede">Royalties, commission, GST and outstanding balances for every client, month by month.</p>
-          <ul className="login-points">
-            <li><CheckIcon />IPRS, PRS, ISAMRA, ASCAP, PPL, MLC and Sound Exchange in one ledger</li>
-            <li><CheckIcon />Commission and GST worked out as you enter</li>
-            <li><CheckIcon />Balances carried forward automatically</li>
-          </ul>
-          <p className="login-brand-foot">Music Rights Management India</p>
-        </aside>
-
-        <main className={`login-card${shake ? ' login-card--shake' : ''}`}>
-          <div className={`login-card-head${done ? ' login-card-head--center' : ''}`}>
-            <div className="login-logo login-logo--small" aria-hidden="true">MRM</div>
-            <h2>{heading}</h2>
-            {subheading && <p>{subheading}</p>}
-          </div>
-          {body}
-        </main>
-      </div>
+      <main className={`login-card${shake ? ' login-card--shake' : ''}`}>
+        <img className="login-logo" src={`${process.env.PUBLIC_URL}/mrm-logo.png`} alt="MRM Music Rights Management" />
+        <div className="login-card-head">
+          <h1>{heading}</h1>
+          {subheading && <p>{subheading}</p>}
+        </div>
+        {body}
+      </main>
+      <p className="login-tagline">Royalty Commission Accounting</p>
     </div>
   );
 };
