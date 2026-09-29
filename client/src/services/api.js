@@ -145,6 +145,14 @@ export const clientMailApi = {
   historyBody: (entryId, index) => api.get(`/client-mail/history/${entryId}/${index}`),
 };
 
+// Who did what: entry saves, client changes, clients opened, mails, sign-ins.
+export const activityApi = {
+  list: (params = {}) => api.get('/activity', { params }),
+  summary: (params = {}) => api.get('/activity/summary', { params }),
+  // Fire and forget - a missed view is not worth bothering anyone about.
+  view: (clientId, where) => api.post('/activity/view', { clientId, where }).catch(() => {}),
+};
+
 // Settings API
 export const settingsApi = {
   getAll: () => api.get('/settings'),

@@ -4,6 +4,7 @@ const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
+const activity = require('../services/activity');
 
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
@@ -108,6 +109,7 @@ router.post('/', async (req, res) => {
     if (existingClient) {
       // If client exists but is inactive, reactivate with new data
       if (!existingClient.isActive) {
+        const before = activity.clientSnapshot(existingClient);
         existingClient.name = name || existingClient.name;
         if (!sendsProfile && type) existingClient.type = type;
         existingClient.fee = fee !== undefined ? parseFloat(fee) : existingClient.fee;
@@ -122,6 +124,12 @@ router.post('/', async (req, res) => {
         applyProfileFields(existingClient, req.body);
         existingClient.isActive = true;
         await existingClient.save();
+        await activity.record(req, {
+          action: 'client.reactivated',
+          clientId: existingClient.clientId,
+          clientName: existingClient.name,
+          changes: activity.diffClient(before, activity.clientSnapshot(existingClient)),
+        });
         return res.status(201).json(existingClient);
       }
       return res.status(400).json({ message: 'Client ID already exists' });
@@ -142,6 +150,7 @@ router.post('/', async (req, res) => {
     applyProfileFields(client, req.body);
 
     await client.save();
+    await activity.record(req, { action: 'client.created', clientId: client.clientId, clientName: client.name });
     res.status(201).json(client);
   } catch (error) {
     sendSaveError(res, error, 'creating');
@@ -162,6 +171,8 @@ router.put('/:id', async (req, res) => {
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
     }
+
+    const before = activity.clientSnapshot(client);
 
     // Update fields
     const oldName = client.name;
@@ -191,6 +202,17 @@ router.put('/:id', async (req, res) => {
     applyProfileFields(client, req.body);
 
     await client.save();
+
+    const changes = activity.diffClient(before, activity.clientSnapshot(client));
+    if (changes.length) {
+      const flipped = changes.find((c) => c.field === 'isActive');
+      await activity.record(req, {
+        action: flipped ? (client.isActive === false ? 'client.deactivated' : 'client.reactivated') : 'client.updated',
+        clientId: client.clientId,
+        clientName: client.name,
+        changes,
+      });
+    }
 
     // The monthly entries mirror the client's name and royalty label. These are
     // relabels, not edits, so they leave each entry's updatedAt alone.
@@ -267,7 +289,13 @@ router.delete('/:id', async (req, res) => {
       if (!result) {
         return res.status(404).json({ message: 'Client not found' });
       }
-      await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
+      const removed = await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
+      await activity.record(req, {
+        action: 'client.deleted',
+        clientId: result.clientId,
+        clientName: result.name,
+        meta: { entriesRemoved: removed.deletedCount || 0 },
+      });
       res.json({ message: 'Client permanently deleted' });
     } else {
       // Soft delete - hide the client but keep its entries, so the removal
@@ -278,6 +306,7 @@ router.delete('/:id', async (req, res) => {
       }
       client.isActive = false;
       await client.save();
+      await activity.record(req, { action: 'client.deactivated', clientId: client.clientId, clientName: client.name });
       res.json({ message: 'Client deactivated', client });
     }
   } catch (error) {
@@ -318,6 +347,13 @@ router.post('/bulk', async (req, res) => {
       }
     }
     
+    if (results.created.length) {
+      await activity.record(req, {
+        action: 'client.imported',
+        meta: { count: results.created.length, clientIds: results.created.map((c) => c.clientId).slice(0, 50) },
+      });
+    }
+
     res.status(201).json(results);
   } catch (error) {
     console.error('Error bulk importing clients:', error);

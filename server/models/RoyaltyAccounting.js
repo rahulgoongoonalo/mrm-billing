@@ -45,6 +45,8 @@ const royaltyAccountingSchema = new mongoose.Schema({
     receivedAmount: { type: Number, default: 0 },
     tdsDeduction: { type: Number, default: 0 },
     afterTdsAmount: { type: Number, default: 0 },
+    // The day the royalty statement / remittance email arrived.
+    emailDate: { type: String, default: '' },
     commission: { type: Number, default: 0 },
   }],
   prsGbp: { type: Number, default: 0 },
@@ -55,6 +57,7 @@ const royaltyAccountingSchema = new mongoose.Schema({
     receivedGbp: { type: Number, default: 0 },
     gbpToInrRate: { type: Number, default: 0 },
     receivedInr: { type: Number, default: 0 },
+    emailDate: { type: String, default: '' },
     commission: { type: Number, default: 0 },
   }],
   soundExchangeAmount: { type: Number, default: 0 },
@@ -64,7 +67,20 @@ const royaltyAccountingSchema = new mongoose.Schema({
   socanAmount: { type: Number, default: 0 },
   pplAmount: { type: Number, default: 0 },
   mlcAmount: { type: Number, default: 0 },
+  imroAmount: { type: Number, default: 0 },
   extraAmount: { type: Number, default: 0 },
+  // For the single-amount societies (everything but IPRS and PRS, whose dates
+  // sit on their receipt lines): when the money came in and when the email
+  // telling us about it arrived. Dates are YYYY-MM-DD, as the date inputs give them.
+  societyDates: {
+    type: [{
+      _id: false,
+      society: { type: String, enum: SOCIETIES, required: true },
+      receivedDate: { type: String, default: '' },
+      emailDate: { type: String, default: '' }
+    }],
+    default: []
+  },
 
   // Computed Commission Values
   iprsCommission: { type: Number, default: 0 },
@@ -76,6 +92,7 @@ const royaltyAccountingSchema = new mongoose.Schema({
   socanCommission: { type: Number, default: 0 },
   pplCommission: { type: Number, default: 0 },
   mlcCommission: { type: Number, default: 0 },
+  imroCommission: { type: Number, default: 0 },
   totalCommission: { type: Number, default: 0 },
 
   // GST & Invoice Inputs (UI Editable)

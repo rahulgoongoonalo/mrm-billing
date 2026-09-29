@@ -7,7 +7,7 @@
 
 // Canonical order. The royalty label lists societies in this order, which
 // reproduces every well-formed label already in use.
-const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL'];
+const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL', 'IMRO'];
 
 const DEFAULT_CLIENT_TYPE = 'Royalty';
 
@@ -24,6 +24,7 @@ const SOCIETY_ALIASES = {
   soundexchange: 'Sound Exchange',
   'sound exchang': 'Sound Exchange',
   ppl: 'PPL',
+  imro: 'IMRO',
   pple: 'PPL',
   'ppl(india)': 'PPL',
   'ppl (india)': 'PPL',
@@ -155,6 +156,7 @@ const SOCIETY_FIELDS = {
   'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission' },
   'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission' },
   'PPL': { amount: 'pplAmount', commission: 'pplCommission' },
+  'IMRO': { amount: 'imroAmount', commission: 'imroCommission' },
 };
 
 const COMMISSION_MODES = ['flat', 'per-society'];

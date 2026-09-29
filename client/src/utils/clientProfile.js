@@ -4,7 +4,7 @@
 // Mirror of server/utils/clientProfile.js - the server applies the same rules on
 // save, so change both together.
 
-export const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL'];
+export const SOCIETIES = ['IPRS', 'PRS', 'ASCAP', 'BMI', 'SOCAN', 'MLC', 'ISAMRA', 'Sound Exchange', 'PPL', 'IMRO'];
 
 export const DEFAULT_CLIENT_TYPE = 'Royalty';
 
@@ -20,6 +20,7 @@ export const SOCIETY_FIELDS = {
   'ISAMRA': { amount: 'isamraAmount', commission: 'isamraCommission', label: 'ISAMRA Amount' },
   'Sound Exchange': { amount: 'soundExchangeAmount', commission: 'soundExchangeCommission', label: 'Sound Exchange Amount' },
   'PPL': { amount: 'pplAmount', commission: 'pplCommission', label: 'PPL Amount' },
+  'IMRO': { amount: 'imroAmount', commission: 'imroCommission', label: 'IMRO Amount' },
 };
 
 export const COMMISSION_MODES = ['flat', 'per-society'];
@@ -67,6 +68,7 @@ export function normalizeSocietyCommissions(list, societies) {
 const SOCIETY_ALIASES = {
   iprs: 'IPRS', prs: 'PRS', ascap: 'ASCAP', bmi: 'BMI', socan: 'SOCAN', mlc: 'MLC', isamra: 'ISAMRA',
   'sound exchange': 'Sound Exchange', soundexchange: 'Sound Exchange', 'sound exchang': 'Sound Exchange',
+  imro: 'IMRO',
   ppl: 'PPL', pple: 'PPL', 'ppl(india)': 'PPL', 'ppl (india)': 'PPL', 'ppl india': 'PPL',
 };
 

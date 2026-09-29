@@ -99,7 +99,7 @@ export const NAV_GROUPS = [
         label: 'All Entries',
         icon: 'list',
         title: 'All Entries',
-        subtitle: 'Every saved entry across all months, newest first',
+        subtitle: 'Who did what to which client, and every saved entry',
       },
       {
         id: 'mail-history',

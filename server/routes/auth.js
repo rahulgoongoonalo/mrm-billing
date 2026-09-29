@@ -5,6 +5,7 @@ const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
 const { authenticateToken } = require('../middleware/auth');
+const activity = require('../services/activity');
 
 // Register
 router.post('/register', async (req, res) => {
@@ -131,6 +132,8 @@ router.post('/login', async (req, res) => {
     // Generate tokens
     const accessToken = generateAccessToken(user._id, user.email, user.role);
     const refreshToken = generateRefreshToken(user._id);
+
+    await activity.record({ user: { email: user.email, userId: user._id } }, { action: 'auth.login' });
 
     res.json({
       accessToken,

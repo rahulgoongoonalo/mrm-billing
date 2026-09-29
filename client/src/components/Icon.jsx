@@ -123,6 +123,14 @@ const PATHS = {
       <path d="m21 21-4.35-4.35"></path>
     </>
   ),
+  'chevron-down': <polyline points="6 9 12 15 18 9"></polyline>,
+  refresh: (
+    <>
+      <polyline points="23 4 23 10 17 10"></polyline>
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+    </>
+  ),
+  activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>,
   calendar: (
     <>
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>

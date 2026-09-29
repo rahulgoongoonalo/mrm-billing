@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
-const emptyRow = { date: '', receivedAmount: '', tdsDeduction: '' };
+const emptyRow = { date: '', emailDate: '', receivedAmount: '', tdsDeduction: '' };
 
 function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClose, isFormReadOnly, fallbackAmount }) {
   const [rows, setRows] = useState([]);
@@ -12,13 +12,14 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
     if (entries.length > 0) {
       setRows(entries.map(e => ({
         date: e.date || '',
+        emailDate: e.emailDate || '',
         receivedAmount: e.receivedAmount ?? '',
         tdsDeduction: e.tdsDeduction ?? '',
       })));
       setIsEditing(false);
     } else if (fallbackAmount && parseFloat(fallbackAmount) > 0) {
       // Pre-populate first row with existing amount from DB
-      setRows([{ date: '', receivedAmount: fallbackAmount, tdsDeduction: '' }]);
+      setRows([{ date: '', emailDate: '', receivedAmount: fallbackAmount, tdsDeduction: '' }]);
       setIsEditing(true);
     } else {
       setRows([{ ...emptyRow }]);
@@ -74,6 +75,7 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
   const handleSave = () => {
     const data = rows.map((row, i) => ({
       date: row.date,
+      emailDate: row.emailDate,
       receivedAmount: parseFloat(row.receivedAmount) || 0,
       tdsDeduction: parseFloat(row.tdsDeduction) || 0,
       afterTdsAmount: computed[i].afterTds,
@@ -112,6 +114,7 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
                 <tr>
                   <th style={{ width: 40 }}>#</th>
                   <th>Date of Royalty Received</th>
+                  <th>Email Received</th>
                   <th>Received Royalty Amount</th>
                   <th>TDS Deduction</th>
                   <th>After TDS Received Royalty</th>
@@ -133,6 +136,18 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
                         />
                       ) : (
                         <span className="detail-value">{row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          value={row.emailDate}
+                          onChange={(e) => handleChange(i, 'emailDate', e.target.value)}
+                          className="detail-input"
+                        />
+                      ) : (
+                        <span className="detail-value">{row.emailDate ? new Date(row.emailDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                       )}
                     </td>
                     <td>
@@ -192,7 +207,7 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
               </tbody>
               <tfoot>
                 <tr className="total-row">
-                  <td colSpan={2}><strong>TOTAL</strong></td>
+                  <td colSpan={3}><strong>TOTAL</strong></td>
                   <td><strong className="computed">₹ {totals.totalReceived.toFixed(2)}</strong></td>
                   <td><strong className="computed">₹ {totals.totalTds.toFixed(2)}</strong></td>
                   <td><strong className="computed">₹ {totals.totalAfterTds.toFixed(2)}</strong></td>

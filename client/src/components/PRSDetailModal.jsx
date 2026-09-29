@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
-const emptyRow = { date: '', receivedGbp: '', gbpToInrRate: '', receivedInr: '' };
+const emptyRow = { date: '', emailDate: '', receivedGbp: '', gbpToInrRate: '', receivedInr: '' };
 
 function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, isFormReadOnly, fallbackGbp, fallbackRate, fallbackAmount }) {
   const [rows, setRows] = useState([]);
@@ -12,6 +12,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
     if (entries.length > 0) {
       setRows(entries.map(e => ({
         date: e.date || '',
+        emailDate: e.emailDate || '',
         receivedGbp: e.receivedGbp ?? '',
         gbpToInrRate: e.gbpToInrRate ?? '',
         receivedInr: e.receivedInr ?? '',
@@ -21,6 +22,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
       // Pre-populate first row with existing DB values
       setRows([{
         date: '',
+        emailDate: '',
         receivedGbp: fallbackGbp || '',
         gbpToInrRate: fallbackRate || '',
         receivedInr: fallbackAmount || '',
@@ -89,6 +91,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
   const handleSave = () => {
     const data = rows.map((row, i) => ({
       date: row.date,
+      emailDate: row.emailDate,
       receivedGbp: parseFloat(row.receivedGbp) || 0,
       gbpToInrRate: parseFloat(row.gbpToInrRate) || 0,
       receivedInr: computed[i].receivedInr,
@@ -127,6 +130,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
                 <tr>
                   <th style={{ width: 40 }}>#</th>
                   <th>Date of Royalty Received</th>
+                  <th>Email Received</th>
                   <th>Received Royalty (GBP)</th>
                   <th>GBP to INR Rate</th>
                   <th>Received Royalty Amount (INR)</th>
@@ -148,6 +152,18 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
                         />
                       ) : (
                         <span className="detail-value">{row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          value={row.emailDate}
+                          onChange={(e) => handleChange(i, 'emailDate', e.target.value)}
+                          className="detail-input"
+                        />
+                      ) : (
+                        <span className="detail-value">{row.emailDate ? new Date(row.emailDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                       )}
                     </td>
                     <td>
@@ -221,7 +237,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
               </tbody>
               <tfoot>
                 <tr className="total-row">
-                  <td colSpan={2}><strong>TOTAL</strong></td>
+                  <td colSpan={3}><strong>TOTAL</strong></td>
                   <td><strong className="computed">£ {totals.totalGbp.toFixed(2)}</strong></td>
                   <td></td>
                   <td><strong className="computed">₹ {totals.totalInr.toFixed(2)}</strong></td>

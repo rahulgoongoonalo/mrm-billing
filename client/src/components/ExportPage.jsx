@@ -1,8 +1,11 @@
 import React from 'react';
 import { useApp } from '../contexts/AppContext';
-import { buildClientMasterCsv, downloadCsv } from '../utils/clientProfile';
+import { buildClientMasterCsv, downloadCsv, SOCIETY_FIELDS } from '../utils/clientProfile';
 import { MONTH_LABELS } from '../utils/format';
 import Icon from './Icon';
+
+// Export column order: the original seven, then the societies added later.
+const EXPORT_SOCIETIES = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'BMI', 'SOCAN', 'IMRO'];
 
 function ExportPage() {
   const { billingEntries, clients, showToast, settings } = useApp();
@@ -11,10 +14,10 @@ function ExportPage() {
   const today = new Date().toISOString().split('T')[0];
 
   const exportAllData = () => {
-    let csv = 'Client ID,Client Name,Month,Year,Commission Rate,IPRS,PRS,Sound Exchange,ISAMRA,ASCAP,PPL,MLC,Total Commission,Monthly Outstanding,Total Outstanding,Status\n';
+    let csv = `Client ID,Client Name,Month,Year,Commission Rate,${EXPORT_SOCIETIES.join(',')},Total Commission,Monthly Outstanding,Total Outstanding,Status\n`;
 
     entries.forEach((e) => {
-      csv += `${e.clientId},"${e.clientName}","${MONTH_LABELS[e.month]}",${e.year},${e.commissionRate || 0}%,${e.iprsAmount || 0},${e.prsAmount || 0},${e.soundExchangeAmount || 0},${e.isamraAmount || 0},${e.ascapAmount || 0},${e.pplAmount || 0},${e.mlcAmount || 0},${e.totalCommission || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0},${e.status}\n`;
+      csv += `${e.clientId},"${e.clientName}","${MONTH_LABELS[e.month]}",${e.year},${e.commissionRate || 0}%,${EXPORT_SOCIETIES.map((s) => e[SOCIETY_FIELDS[s].amount] || 0).join(',')},${e.totalCommission || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0},${e.status}\n`;
     });
 
     downloadCsv(csv, `MRM_Royalty_Accounting_Export_${today}.csv`);
