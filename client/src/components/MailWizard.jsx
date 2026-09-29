@@ -6,7 +6,7 @@ import ClientFormModal from './ClientFormModal';
 // Mailing a client, one step at a time. Nothing is sent until the last step,
 // and every earlier step can be gone back to:
 //
-//   1. Check    - the client master must be complete (email, phone, GST...)
+//   1. Check    - the client master must be complete (email, phone...)
 //   2. Type     - which of the three letters
 //   3. Details  - fill in the letter and recipients
 //   4. Preview  - the mail exactly as it will go
