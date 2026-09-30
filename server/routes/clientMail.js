@@ -1,9 +1,9 @@
 // The client mail wizard's API. A mail is only ever sent by a person who has
-// walked through: check the client master -> pick a letter -> fill it in ->
+// walked through: check the client master -> fill the letter in ->
 // preview it -> send. Mails carry no attachments: the client opens and
 // downloads the statement from the links in the mail.
 //
-//   GET  /api/client-mail/:clientId/check     readiness + letter types + defaults
+//   GET  /api/client-mail/:clientId/check     readiness + the letter's defaults
 //   POST /api/client-mail/:clientId/preview   the rendered mail
 //   POST /api/client-mail/:clientId/send      send it and log it on the month
 
@@ -17,7 +17,7 @@ const { getClientTransporter } = require('../services/emailService');
 const { buildStatement, calOrder, statementUrl } = require('../services/statementBuilder');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 const {
-  MAIL_TYPES, ACCOUNTS_EMAIL, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
+  MAIL_TYPES, DEFAULT_TYPE, ACCOUNTS_EMAIL, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
 } = require('../services/clientMail');
 
 router.use(authenticateToken);
@@ -33,10 +33,10 @@ async function load(clientId) {
 // sent is exactly what was previewed.
 async function compose(req, { preview }) {
   const { clientId } = req.params;
-  const { type, values = {}, subject, cc } = req.body || {};
+  const { type = DEFAULT_TYPE, values = {}, subject, cc } = req.body || {};
   const fail = (status, message, extra) => Object.assign(new Error(message), { status, extra });
 
-  if (!MAIL_TYPES[type]) throw fail(400, 'Choose a mail type.');
+  if (!MAIL_TYPES[type]) throw fail(400, 'Unknown mail type.');
   const { client, rows } = await load(clientId);
   if (!client) throw fail(404, 'Client not found.');
 
@@ -49,7 +49,7 @@ async function compose(req, { preview }) {
   const recipients = resolveRecipients(client, cc);
   // rows are in calendar order, so the last is the latest month held.
   const mail = renderMail({ type, client, values, subject, recipients, latest: rows[rows.length - 1], preview });
-  return { client, rows, recipients, mail };
+  return { client, rows, recipients, mail, type };
 }
 
 const sendError = (res, err) => {
@@ -181,7 +181,7 @@ router.post('/:clientId/preview', async (req, res) => {
 // @route POST /api/client-mail/:clientId/send
 router.post('/:clientId/send', async (req, res) => {
   try {
-    const { client, rows, recipients, mail } = await compose(req, { preview: false });
+    const { client, rows, recipients, mail, type } = await compose(req, { preview: false });
     if (recipients.blocked) return res.status(400).json({ message: recipients.blocked });
 
     const from = process.env.CLIENT_MAIL_FROM || process.env.EMAIL_FROM || '';
@@ -193,7 +193,7 @@ router.post('/:clientId/send', async (req, res) => {
       intendedTo: recipients.intendedTo.join(', '),
       cc: recipients.cc.join(', '),
       subject: mail.subject,
-      mailType: req.body.type,
+      mailType: type,
       isTest: recipients.isTest,
       byEmail: req.user?.email || '',
     };

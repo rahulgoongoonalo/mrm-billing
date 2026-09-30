@@ -92,7 +92,6 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .stat:last-child{border-right:none}
 .stat span{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--faint);font-weight:600}
 .stat b{display:block;margin-top:2px;font-size:15px;font-weight:700;color:var(--navy)}
-.stat.g b{color:var(--green)}
 .stat.b b{color:var(--blue)}
 .split{list-style:none;margin:5px 0 0;padding:4px 0 0;border-top:1px dashed var(--line);display:grid;gap:1px}
 .split li{display:flex;justify-content:space-between;gap:12px}
@@ -443,7 +442,7 @@ function page(st) {
 
   const opening = st.openedFrom ? `Brought forward from ${esc(st.openedFrom)}` : 'Opening balance';
 
-  const contact = [['GST ID', st.gstId], ['Email', st.email], ['Phone', st.phone]]
+  const contact = [['Email', st.email], ['Phone', st.phone]]
     .filter(([, v]) => v)
     .map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
 
@@ -473,7 +472,6 @@ ${sheet(st.clientName, st.clientId, `
     st.royaltyBySociety.length > 1
       ? `<ul class="split">${st.royaltyBySociety.map((x) => `<li><span>${esc(x.label)}</span><b>${inr(x.amount)}</b></li>`).join('')}</ul>`
       : ''}</div>
-  <div class="stat g"><span>Total MRM Service Fees</span><b>${inr(st.feeTotal)}</b></div>
   <div class="stat"><span>Period</span><b>${esc(st.periodFrom)} &ndash; ${esc(st.periodTo)}</b></div>
   <div class="stat"><span>Months shown</span><b>${st.monthsShown} of ${st.monthsHeld}</b></div>
 </div>

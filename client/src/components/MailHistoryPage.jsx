@@ -8,6 +8,7 @@ import Icon from './Icon';
 // client received it, with its envelope, attachments and the month's figures.
 
 const TYPE_LABELS = {
+  statement: 'Statement',
   historical: 'Historical outstanding',
   regular: 'Regular payer',
   catalogue: 'Membership & catalogue',

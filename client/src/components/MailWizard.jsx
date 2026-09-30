@@ -7,18 +7,17 @@ import ClientFormModal from './ClientFormModal';
 // and every earlier step can be gone back to:
 //
 //   1. Check    - the client master must be complete (email, phone...)
-//   2. Type     - which of the three letters
-//   3. Details  - fill in the letter and recipients
-//   4. Preview  - the mail exactly as it will go
-//   5. Sent     - the outcome
+//   2. Details  - fill in the letter and recipients
+//   3. Preview  - the mail exactly as it will go
+//   4. Sent     - the outcome
+//
+// There is one letter, so the wizard never asks which.
 //
 // Mails carry no attachments: the client opens (and downloads) the statement
 // from the Balance build-up / Full record links in the mail.
 
-const STEPS = ['Client check', 'Mail type', 'Details', 'Preview', 'Sent'];
-
-const inr = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 })
-  .format(Number(v) || 0);
+const STEPS = ['Client check', 'Details', 'Preview', 'Sent'];
+const SENT = STEPS.length - 1;
 
 const errorText = (err, fallback) => err?.response?.data?.message || err?.message || fallback;
 
@@ -55,7 +54,7 @@ function MailWizard({ clientId, month, year, onClose }) {
         showToast(bad ? `${bad} item${bad === 1 ? '' : 's'} still need fixing` : 'All client details are complete', bad ? 'warning' : 'success');
       }
       if (!keepState) {
-        setType(data.context.suggested);
+        setType(data.types[0]?.key || '');
         setCc(data.defaultCc || '');
         setValues(Object.fromEntries(data.types.map((t) => [t.key, Object.fromEntries(t.fields.map((f) => [f.key, f.value ?? '']))])));
         setSubjects(Object.fromEntries(data.types.map((t) => [t.key, t.subject])));
@@ -91,7 +90,7 @@ function MailWizard({ clientId, month, year, onClose }) {
 
   const go = (to) => { setStepError(''); setStep(to); };
 
-  // ---- step 3 -> 4 --------------------------------------------------------
+  // ---- step 2 -> 3 --------------------------------------------------------
   const loadPreview = async () => {
     if (missing.length) { setStepError(`Fill in: ${missing.map((f) => f.label).join(', ')}`); return; }
     setBusy('preview');
@@ -99,7 +98,7 @@ function MailWizard({ clientId, month, year, onClose }) {
     try {
       const { data } = await clientMailApi.preview(clientId, body());
       setPreview(data);
-      setStep(3);
+      setStep(2);
     } catch (err) {
       setStepError(errorText(err, 'Could not build the preview.'));
     } finally {
@@ -107,7 +106,7 @@ function MailWizard({ clientId, month, year, onClose }) {
     }
   };
 
-  // ---- step 4 -> 5 --------------------------------------------------------
+  // ---- step 3 -> 4 --------------------------------------------------------
   const send = async () => {
     setBusy('send');
     setStepError('');
@@ -119,7 +118,7 @@ function MailWizard({ clientId, month, year, onClose }) {
       setResult({ ok: false, message: errorText(err, 'The mail could not be sent.') });
     } finally {
       setBusy('');
-      setStep(4);
+      setStep(SENT);
     }
   };
 
@@ -187,39 +186,6 @@ function MailWizard({ clientId, month, year, onClose }) {
           ))}
         </div>
       )}
-    </>
-  );
-
-  const stepType = () => (
-    <>
-      <div className="mw-facts">
-        <div><span>Outstanding now</span><b>{inr(info.context.closing)}</b></div>
-        <div><span>Royalty received (all time)</span><b>{inr(info.context.royaltyTotal)}</b></div>
-        <div><span>Last payment</span><b>{info.context.lastPayment || 'Never'}</b></div>
-      </div>
-      <div className="mw-types">
-        {info.types.map((t, i) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`mw-type${type === t.key ? ' selected' : ''}`}
-            onClick={() => setType(t.key)}
-          >
-            <span className="mw-type-num">{i + 1}</span>
-            <span className="mw-type-body">
-              <b>
-                {t.label}
-                {info.context.suggested === t.key && <span className="mw-rec">Suggested</span>}
-              </b>
-              <span>{t.summary}</span>
-              <small>Signed by {t.signer}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-      <p className="mw-hint">
-        Suggested because {info.context.reason}. You can pick any of the three.
-      </p>
     </>
   );
 
@@ -314,11 +280,10 @@ function MailWizard({ clientId, month, year, onClose }) {
     const back = (to) => <button className="btn btn-secondary" onClick={() => go(to)} disabled={!!busy}>← Back</button>;
     const skip = <button className="btn btn-secondary mw-skip" onClick={onClose}>Don&rsquo;t send</button>;
     switch (step) {
-      case 0: return (<>{skip}<button className="btn btn-primary" onClick={() => go(1)} disabled={!info?.ready}>Next: choose mail →</button></>);
-      case 1: return (<>{skip}{back(0)}<button className="btn btn-primary" onClick={() => go(2)} disabled={!type}>Next: fill details →</button></>);
-      case 2: return (<>{skip}{back(1)}<button className="btn btn-primary" onClick={loadPreview} disabled={busy === 'preview'}>{busy === 'preview' ? 'Building preview…' : 'Next: preview →'}</button></>);
-      case 3: return (
-        <>{skip}{back(2)}
+      case 0: return (<>{skip}<button className="btn btn-primary" onClick={() => go(1)} disabled={!info?.ready || !typeDef}>Next: fill details →</button></>);
+      case 1: return (<>{skip}{back(0)}<button className="btn btn-primary" onClick={loadPreview} disabled={busy === 'preview'}>{busy === 'preview' ? 'Building preview…' : 'Next: preview →'}</button></>);
+      case 2: return (
+        <>{skip}{back(1)}
           <button className="btn btn-success" onClick={send} disabled={busy === 'send' || !!preview?.recipients.blocked}>
             {busy === 'send' ? 'Sending…' : preview?.recipients.isTest ? 'Send test mail' : `Send to ${client.name}`}
           </button>
@@ -326,7 +291,7 @@ function MailWizard({ clientId, month, year, onClose }) {
       );
       default: return result?.ok
         ? <button className="btn btn-primary" onClick={onClose}>Done</button>
-        : (<>{skip}{back(3)}<button className="btn btn-primary" onClick={send} disabled={busy === 'send'}>Try again</button></>);
+        : (<>{skip}{back(2)}<button className="btn btn-primary" onClick={send} disabled={busy === 'send'}>Try again</button></>);
     }
   };
 
@@ -357,7 +322,7 @@ function MailWizard({ clientId, month, year, onClose }) {
         <ol className="mw-steps">
           {STEPS.map((label, i) => {
             // Earlier steps can be clicked to go back; nothing after the send.
-            const canJump = i < step && step < 4;
+            const canJump = i < step && step < SENT;
             return (
               <li key={label} className={i === step ? 'current' : i < step ? 'done' : ''}>
                 <button type="button" disabled={!canJump || !!busy} onClick={() => go(i)}>
@@ -371,12 +336,11 @@ function MailWizard({ clientId, month, year, onClose }) {
         <div className="modal-body">
           {!info && !loadError && <div className="mw-loading">Checking client…</div>}
           {loadError && <div className="mw-banner danger">{loadError}</div>}
-          {info && step !== 3 && step !== 4 && modeBanner}
+          {info && step < 2 && modeBanner}
           {info && step === 0 && stepCheck()}
-          {info && step === 1 && stepType()}
-          {info && step === 2 && typeDef && stepDetails()}
-          {info && step === 3 && preview && stepPreview()}
-          {step === 4 && result && stepResult()}
+          {info && step === 1 && typeDef && stepDetails()}
+          {info && step === 2 && preview && stepPreview()}
+          {step === SENT && result && stepResult()}
           {stepError && <div className="mw-banner danger mw-error">{stepError}</div>}
         </div>
 
