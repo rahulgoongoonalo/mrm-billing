@@ -174,9 +174,58 @@ function diffClient(before, after) {
   return changes;
 }
 
+// ---------------------------------------------------------------------------
+// Which part of the record a change belongs to
+// ---------------------------------------------------------------------------
+
+// Several recorded fields are one thing to the person reading the page: the
+// IPRS amount, its receipt lines and its dates are all "IPRS"; this month's
+// and the previous receipts are both "Receipt". The All Entries page counts
+// and filters by these groups. Results (total commission, total outstanding)
+// move whenever anything else does, so they belong to no group.
+const LINE_FIELDS = { IPRS: 'iprsEntries', PRS: 'prsEntries' };
+
+const FIELD_GROUPS = [
+  ...SOCIETIES.map((s) => ({
+    key: `entry:${s}`,
+    scope: 'entry',
+    label: s,
+    fields: [SOCIETY_FIELDS[s].amount, `${s}.receivedDate`, `${s}.emailDate`, ...(LINE_FIELDS[s] ? [LINE_FIELDS[s]] : [])],
+  })),
+  { key: 'entry:adjustment', scope: 'entry', label: 'Extra / adjustment', fields: ['extraAmount'] },
+  { key: 'entry:gst', scope: 'entry', label: 'GST invoice', fields: ['currentMonthGstBase', 'previousOutstandingGstBase'] },
+  { key: 'entry:receipt', scope: 'entry', label: 'Receipt', fields: ['currentMonthReceipt', 'previousMonthReceipt'] },
+  { key: 'entry:tds', scope: 'entry', label: 'TDS', fields: ['currentMonthTds', 'previousMonthTds'] },
+  { key: 'entry:opening', scope: 'entry', label: 'Opening balance', fields: ['previousMonthOutstanding'] },
+  { key: 'entry:commissionRate', scope: 'entry', label: 'Commission rate', fields: ['commissionRate'] },
+  { key: 'entry:gstRate', scope: 'entry', label: 'GST rate', fields: ['gstRate'] },
+  { key: 'entry:status', scope: 'entry', label: 'Status', fields: ['status'] },
+  ...CLIENT_FIELDS.map((f) => ({ key: `client:${f.field}`, scope: 'client', label: f.label, fields: [f.field] })),
+];
+
+const fieldGroup = (key) => FIELD_GROUPS.find((g) => g.key === key);
+
+// Aggregation expression: the group key of change `$$c` on the current event,
+// or null. An event's scope is the first half of its action ('entry.updated').
+const groupKeyExpr = () => {
+  const scope = { $arrayElemAt: [{ $split: ['$action', '.'] }, 0] };
+  return {
+    $switch: {
+      branches: FIELD_GROUPS.map((g) => ({
+        case: { $and: [{ $eq: [scope, g.scope] }, { $in: ['$$c.field', g.fields] }] },
+        then: g.key,
+      })),
+      default: null,
+    },
+  };
+};
+
 module.exports = {
   record,
   recordView,
+  FIELD_GROUPS,
+  fieldGroup,
+  groupKeyExpr,
   diffEntry,
   entryAction,
   entrySnapshot,
