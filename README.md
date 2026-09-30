@@ -221,7 +221,6 @@ EMAIL_FROM="MRM Billing <sender@example.com>"
 CLIENT_SMTP_USER=accounts@musicrightsmanagementindia.com
 CLIENT_SMTP_PASS=your-google-app-password
 CLIENT_MAIL_FROM="Music Rights Management <accounts@musicrightsmanagementindia.com>"
-MAIL_SHERLEY_EMAIL=            # optional: Email line in the mail signature
 
 # Client mail goes to the client by default. Optional:
 #   ENTRY_MAIL_TEST_TO=you@example.com -> every client mail goes here instead, marked [TEST]
@@ -231,8 +230,8 @@ MAIL_SHERLEY_EMAIL=            # optional: Email line in the mail signature
 ### Client mail
 Submitting an entry opens the mail wizard: it checks the client record is
 complete (email, phone, GST ID, society, commission rate, payment account),
-lets you pick one of three letters (historical outstanding, regular payer,
-membership & catalogue), fill in its details, preview it and send it. Mails
+fills in the statement letter (period, royalty received, closing balance) for
+you to adjust, previews it and sends it. Mails
 carry no attachments: the client opens and downloads the statement from the
 Balance build-up / Full record links in the mail. Every mail sent is kept on
 the Mail History page, exactly as it went out.

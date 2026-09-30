@@ -1,10 +1,10 @@
-// Client mail: the three letters MRM sends a client by hand from the entry
-// screen, the readiness check that must pass before any of them is sent, and
-// who they actually go to.
+// Client mail: the statement letter MRM sends a client by hand from the entry
+// screen, the readiness check that must pass before it is sent, and who it
+// actually goes to.
 //
-// Every letter is written as data (paragraphs and lists with {placeholders}),
-// so the wizard can list the fields each one needs, preview the result and
-// send exactly what was previewed.
+// The letter is written as data (paragraphs and lists with {placeholders}),
+// so the wizard can list the fields it needs, preview the result and send
+// exactly what was previewed.
 //
 // Recipients are controlled by the same environment variables as before:
 //
@@ -33,15 +33,9 @@ const WEBSITE = 'https://www.musicrightsmanagementindia.com';
 const ACCOUNTS_EMAIL = 'accounts@musicrightsmanagementindia.com';
 
 const SIGNERS = {
-  sherley: {
-    name: 'Sherley Singh',
-    title: 'Founder & Managing Director',
-    phone: '+91 98210 35469',
-    email: process.env.MAIL_SHERLEY_EMAIL || '',
-  },
   pallavi: {
-    name: 'Pallavi Nivave',
-    title: 'Accounts & Client Servicing',
+    name: 'Pallavi Shailesh Ninave',
+    title: 'Accounts Team',
     phone: '+91 90825 63873',
     email: ACCOUNTS_EMAIL,
   },
@@ -84,88 +78,40 @@ const inr = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, ma
   .format(Number(v) || 0);
 
 // ---------------------------------------------------------------------------
-// The three letters
+// The letter
 // ---------------------------------------------------------------------------
 
 // Field kinds: 'date' (picked as YYYY-MM-DD, printed long-form), 'amount'
 // (printed as ₹1,23,456.00), 'text'. `default(ctx)` fills the wizard's form.
+// There is one letter, so the wizard never asks which; older mails in the log
+// still carry the keys of the letters it replaced.
+const DEFAULT_TYPE = 'statement';
 const MAIL_TYPES = {
-  historical: {
-    key: 'historical',
-    label: 'Historical outstanding',
-    summary: 'Full reconciliation for a long-pending balance. Asks for a call to agree a payment schedule.',
-    signer: 'sherley',
-    subject: (c) => `Statement of account and outstanding summary – ${c.name} (${c.clientId})`,
+  statement: {
+    key: 'statement',
+    label: 'Statement',
+    summary: 'Royalty and service fee statement for the period, with the closing balance payable.',
+    signer: 'pallavi',
+    subject: (c) => `Your MRM royalty and service fee statement – ${c.name} (${c.clientId})`,
     fields: [
-      { key: 'startDate', label: 'Reconciliation from', kind: 'date', default: (ctx) => ctx.firstEntryDate },
-      { key: 'currentDate', label: 'As of (current date)', kind: 'date', default: () => isoDate(new Date()) },
-      { key: 'amount', label: 'Total amount outstanding (₹)', kind: 'amount', default: (ctx) => ctx.closing },
+      { key: 'period', label: 'Statement period', kind: 'text', default: (ctx) => [ctx.periodFrom, ctx.periodTo].filter(Boolean).join(' – ') },
+      { key: 'royalty', label: 'Royalty received in this period (₹)', kind: 'amount', default: (ctx) => ctx.royaltyTotal },
+      { key: 'asAtDate', label: 'Closing balance as at', kind: 'date', default: () => isoDate(new Date()) },
+      { key: 'closing', label: 'Closing balance payable to MRM (₹)', kind: 'amount', default: (ctx) => ctx.closing },
     ],
     body: [
-      'We have completed a detailed reconciliation of your account with Music Rights Management from {startDate} until {currentDate}.',
-      'You can view and download the following through the links below:',
-      ['Full record – your detailed statement of account', 'Balance build-up – your historical outstanding-payment summary'],
-      'As of {currentDate}, the total amount outstanding is {amount}. This balance has remained pending for an extended period and now requires immediate closure through a mutually agreed payment schedule.',
-      'I request you to please review the statements and share a convenient time for a call at the earliest. During the call, we would like to agree upon the amounts and specific dates on which the pending payments will be released.',
-      'If you require any clarification before the call, Pallavi will be available to assist you on {pallaviPhone}.',
-      'I look forward to resolving this promptly.',
-    ],
-  },
-
-  regular: {
-    key: 'regular',
-    label: 'Regular payer',
-    summary: 'Updated account and royalty statement, and what the client will receive every time royalty comes in.',
-    signer: 'sherley',
-    subject: (c) => `Your updated account and royalty statement – ${c.name} (${c.clientId})`,
-    fields: [
-      { key: 'asOfDate', label: 'Statement as of', kind: 'date', default: () => isoDate(new Date()) },
-    ],
-    body: [
-      'Thank you for giving Music Rights Management the opportunity to represent and serve you.',
-      'Your updated account and royalty statement as of {asOfDate} is available through the links below, where you can view and download it.',
-      'Going forward, whenever any royalty is received on your behalf from a society, CMO or any other source, you will receive a detailed report showing:',
+      'Please find attached your MRM royalty and service fee statement for {period}.',
       [
-        'Source of the royalty',
-        'Amount received',
-        'Applicable professional fees, taxes or deductions',
-        'Net amount payable to you',
-        'TDS deducted',
-        'Closing balance, if any',
+        'Royalty received by you during this period: {royalty}',
+        'Closing balance payable to MRM as at {asAtDate}: {closing}',
       ],
-      'These regular statements will ensure that you, your accountant and MRM always have the same updated information and that there are no delays in accounting, tax compliance or documentation.',
-      'Please review the statement and confirm that it agrees with your records. For any clarification, please contact Pallavi on {pallaviPhone}.',
-      'We sincerely appreciate your continued trust and look forward to serving you.',
-    ],
-  },
-
-  catalogue: {
-    key: 'catalogue',
-    label: 'Membership & catalogue update',
-    summary: 'For clients whose royalty is still below ₹500: membership, catalogue and registration status.',
-    signer: 'sherley',
-    subject: (c) => `Membership, catalogue and registration-status update – ${c.name} (${c.clientId})`,
-    fields: [
-      { key: 'society', label: 'Membership society', kind: 'text', default: (ctx) => ctx.societies },
-    ],
-    body: [
-      'Thank you for becoming a part of the Music Rights Management family.',
-      'We are pleased to share an updated summary of the work completed for your account:',
-      [
-        'Your membership with {society} has been completed.',
-        'Your catalogue of works was consolidated by MRM.',
-        'The final list of works was reviewed and approved by you.',
-        'Registrations were submitted to {society}.',
-        'MRM continues to track the registrations, follow up with the concerned societies and monitor future royalty distributions.',
-      ],
-      'We look forward to receiving and administering royalties arising from these works. Whenever a royalty is received, we will send you a complete statement detailing the source, amount, deductions and payment status. Your account statement is available through the links below.',
-      'Please review the information above and confirm that it is complete and correct. For any questions or additions, please contact Pallavi on {pallaviPhone}.',
-      'Thank you for giving us the opportunity to represent and support your work.',
+      'The statement details the royalties recorded, service fees, GST, payments received and any opening balance carried forward.',
+      'Payment details are included in the statement. For any clarification or payment not reflected, please reply to this email.',
     ],
   },
 };
 
-/** The type list the wizard needs, with each field's default filled in. */
+/** The letter(s) the wizard offers, with each field's default filled in. */
 function describeTypes(client, ctx) {
   return Object.values(MAIL_TYPES).map((t) => ({
     key: t.key,
@@ -237,7 +183,7 @@ function checkClient(client, entryCount) {
 }
 
 // ---------------------------------------------------------------------------
-// Which letter fits this client
+// What the letter is filled in from
 // ---------------------------------------------------------------------------
 
 /**
@@ -266,18 +212,6 @@ function mailContext(client, fullStatement, rows) {
   const calIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
   const firstEntryDate = first ? isoDate(new Date(first.year, calIdx[first.month], 1)) : '';
 
-  let suggested = 'regular';
-  let reason = 'the account is being paid regularly';
-  if (royaltyTotal < 500) {
-    suggested = 'catalogue';
-    reason = `total royalty received so far is only ₹${inr(royaltyTotal)} (below ₹500)`;
-  } else if (closing >= 1 && (monthsSincePayment === null || monthsSincePayment >= 6)) {
-    suggested = 'historical';
-    reason = monthsSincePayment === null
-      ? `₹${inr(closing)} is outstanding and no payment has ever been recorded`
-      : `₹${inr(closing)} is outstanding and the last payment was in ${lastPayment} (${monthsSincePayment} months ago)`;
-  }
-
   return {
     closing,
     royaltyTotal,
@@ -288,8 +222,6 @@ function mailContext(client, fullStatement, rows) {
     firstEntryDate,
     associationDate: isoDate(client.createdAt) || '',
     societies: (client.societies || []).join(' / '),
-    suggested,
-    reason,
   };
 }
 
@@ -320,7 +252,7 @@ function resolveRecipients(client, cc) {
 
 function fillValues(type, values) {
   const t = MAIL_TYPES[type];
-  const out = { pallaviPhone: SIGNERS.pallavi.phone };
+  const out = {};
   for (const f of t.fields) {
     const raw = values?.[f.key];
     if (f.kind === 'date') out[f.key] = formatDate(raw);
@@ -446,6 +378,7 @@ ${signatureHtml(t.signer, preview ? LOGO_DATA_URI : logoUrl())}
 
 module.exports = {
   MAIL_TYPES,
+  DEFAULT_TYPE,
   SIGNERS,
   ACCOUNTS_EMAIL,
   LOGO_FILE,

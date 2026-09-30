@@ -10,6 +10,7 @@ const PAYMENT_ACCOUNTS = {
       ['Current account no.', '59239000012345'],
       ['IFSC', 'HDFC0000321'],
       ['SWIFT code', 'HDFCINBB'],
+      ['GST ID', '27ABHCS4769D1Z1'],
       ['Address', 'Krishna Kunj, V.L. Mehta Road, JVPD Scheme, Mumbai - 400056, Maharashtra, India'],
     ],
   },
