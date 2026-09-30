@@ -37,7 +37,6 @@ const SIGNERS = {
     name: 'Pallavi Shailesh Ninave',
     title: 'Accounts Team',
     phone: '+91 90825 63873',
-    email: ACCOUNTS_EMAIL,
   },
 };
 
@@ -275,12 +274,7 @@ const P = 'margin:0 0 14px;font-size:14px;line-height:1.65;color:#222;';
 
 function signatureHtml(signer, logoSrc) {
   const s = SIGNERS[signer];
-  const contact = [
-    ['Mobile', s.phone, `tel:${s.phone.replace(/\s/g, '')}`],
-    ['Email', s.email, s.email ? `mailto:${s.email}` : ''],
-  ].filter(([, v]) => v)
-    .map(([k, v, href]) => `${k}: <a href="${esc(href)}" style="color:#1a5fb4;text-decoration:none;">${esc(v)}</a>`)
-    .join('<br>');
+  const contact = `Mobile: <a href="tel:${esc(s.phone.replace(/\s/g, ''))}" style="color:#1a5fb4;text-decoration:none;">${esc(s.phone)}</a>`;
 
   return `
 <p style="${P}margin-top:22px;">Warm regards,</p>
@@ -368,7 +362,7 @@ ${signatureHtml(t.signer, preview ? LOGO_DATA_URI : logoUrl())}
       `Full record: ${statementUrl(client.clientId, 'full')}`, '',
     ] : []),
     'Warm regards,', '', signer.name, signer.title, 'Music Rights Management – MRM India', '',
-    `Mobile: ${signer.phone}`, ...(signer.email ? [`Email: ${signer.email}`] : []), '',
+    `Mobile: ${signer.phone}`, '',
     ...COMPANY_ADDRESS, '', WEBSITE,
   ].join('\n');
 
