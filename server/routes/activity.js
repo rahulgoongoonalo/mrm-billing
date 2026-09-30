@@ -4,7 +4,7 @@ const ActivityEvent = require('../models/ActivityEvent');
 const Client = require('../models/Client');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
-const { recordView, VIEW_PLACES } = require('../services/activity');
+const { recordView, VIEW_PLACES, FIELD_GROUPS, fieldGroup, groupKeyExpr } = require('../services/activity');
 
 router.use(authenticateToken);
 
@@ -29,6 +29,14 @@ function scopeFilter(req) {
   // Entry-only filters: anything that is not a monthly entry drops out.
   if (req.query.month) q.month = req.query.month;
   if (req.query.status) q['meta.status'] = req.query.status;
+  // Only saves that changed this part of the record (a group of fields).
+  const group = fieldGroup(req.query.field);
+  if (group) {
+    q['changes.field'] = { $in: group.fields };
+    const inScope = ActivityEvent.ACTIONS.filter((a) => a.startsWith(`${group.scope}.`));
+    const asked = q.action ? [].concat(q.action.$in || q.action) : inScope;
+    q.action = { $in: asked.filter((a) => inScope.includes(a)) };
+  }
   return q;
 }
 
@@ -69,8 +77,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Saving a month again without changing anything is recorded as an update;
+// the summary counts it apart, so "edited" means something moved.
+const countedAction = {
+  $cond: [
+    { $and: [{ $eq: ['$action', 'entry.updated'] }, { $eq: [{ $size: { $ifNull: ['$changes', []] } }, 0] }] },
+    'entry.resaved',
+    '$action',
+  ],
+};
+
 // @route GET /api/activity/summary
-// @desc  Per person and per person-and-client counts for a period
+// @desc  Per person and per person-and-client counts for a period, and how
+//        many of their saves changed each part of the record
 router.get('/summary', async (req, res) => {
   try {
     const match = scopeFilter(req);
@@ -78,13 +97,14 @@ router.get('/summary', async (req, res) => {
     delete match.clientId;
     delete match.month;
     delete match['meta.status'];
+    delete match['changes.field'];
 
-    const [people, clients, users, firstEvent] = await Promise.all([
+    const [people, clients, fields, users, firstEvent] = await Promise.all([
       ActivityEvent.aggregate([
         { $match: match },
         {
           $group: {
-            _id: { user: '$userEmail', action: '$action' },
+            _id: { user: '$userEmail', action: countedAction },
             count: { $sum: 1 },
             first: { $min: '$at' },
             last: { $max: '$at' },
@@ -96,12 +116,26 @@ router.get('/summary', async (req, res) => {
         { $sort: { at: 1 } },
         {
           $group: {
-            _id: { user: '$userEmail', clientId: '$clientId', action: '$action' },
+            _id: { user: '$userEmail', clientId: '$clientId', action: countedAction },
             clientName: { $last: '$clientName' },
             count: { $sum: 1 },
             last: { $max: '$at' },
           },
         },
+      ]),
+      // One count per save and group, however many of the group's fields moved.
+      ActivityEvent.aggregate([
+        { $match: { ...match, 'changes.0': { $exists: true } } },
+        {
+          $project: {
+            userEmail: 1,
+            clientId: 1,
+            group: { $setUnion: [{ $map: { input: '$changes', as: 'c', in: groupKeyExpr() } }] },
+          },
+        },
+        { $unwind: '$group' },
+        { $match: { group: { $ne: null } } },
+        { $group: { _id: { user: '$userEmail', clientId: '$clientId', group: '$group' }, count: { $sum: 1 } } },
       ]),
       User.find(isAdmin(req) ? {} : { email: req.user.email }).select('email name role').lean(),
       ActivityEvent.findOne({}).sort({ at: 1 }).select('at').lean(),
@@ -109,7 +143,7 @@ router.get('/summary', async (req, res) => {
 
     const byUser = new Map();
     const personOf = (email) => {
-      if (!byUser.has(email)) byUser.set(email, { email, actions: {}, first: null, last: null, clients: new Map() });
+      if (!byUser.has(email)) byUser.set(email, { email, actions: {}, fields: {}, first: null, last: null, clients: new Map() });
       return byUser.get(email);
     };
     for (const row of people) {
@@ -121,12 +155,19 @@ router.get('/summary', async (req, res) => {
     for (const row of clients) {
       const p = personOf(row._id.user);
       if (!p.clients.has(row._id.clientId)) {
-        p.clients.set(row._id.clientId, { clientId: row._id.clientId, clientName: row.clientName, actions: {}, last: null });
+        p.clients.set(row._id.clientId, { clientId: row._id.clientId, clientName: row.clientName, actions: {}, fields: {}, last: null });
       }
       const c = p.clients.get(row._id.clientId);
       c.actions[row._id.action] = row.count;
       if (row.clientName) c.clientName = row.clientName;
       if (!c.last || row.last > c.last) c.last = row.last;
+    }
+
+    for (const row of fields) {
+      const p = personOf(row._id.user);
+      p.fields[row._id.group] = (p.fields[row._id.group] || 0) + row.count;
+      const c = p.clients.get(row._id.clientId);
+      if (c) c.fields[row._id.group] = row.count;
     }
 
     const names = new Map(users.map((u) => [u.email, u]));
@@ -135,6 +176,7 @@ router.get('/summary', async (req, res) => {
       name: names.get(p.email)?.name || '',
       role: names.get(p.email)?.role || '',
       actions: p.actions,
+      fields: p.fields,
       first: p.first,
       last: p.last,
       clients: [...p.clients.values()].sort((a, b) => new Date(b.last) - new Date(a.last)),
@@ -145,6 +187,7 @@ router.get('/summary', async (req, res) => {
       users: users.map((u) => ({ email: u.email, name: u.name, role: u.role })),
       scope: isAdmin(req) ? 'everyone' : 'self',
       recordingSince: firstEvent?.at || null,
+      fieldGroups: FIELD_GROUPS,
     });
   } catch (error) {
     console.error('Error building activity summary:', error);

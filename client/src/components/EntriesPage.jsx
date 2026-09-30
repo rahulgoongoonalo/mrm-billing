@@ -7,6 +7,12 @@ import Icon from './Icon';
 
 // All Entries: who did what, to which client, and when - one page.
 //
+// It reads top to bottom as three things: the headline numbers, one line per
+// person, and one line per client a person worked on that day. Each line is a
+// plain sentence ("Edited Jul, Aug 2026") followed by what was changed (IPRS,
+// Receipt...); opening a client line lists every save with its before and
+// after. Opening a client and signing in are left out unless asked for.
+//
 // Two sources feed it, merged into one timeline:
 //   events  - recorded by the server as people work (services/activity.js):
 //             every save, submit and delete with the figures that changed,
@@ -15,6 +21,11 @@ import Icon from './Icon';
 //             recorded survives only as each entry's last save, so for that
 //             stretch the entry is shown as one "added" or "edited" by whoever
 //             saved it last, marked as coming from the entry record.
+//
+// What was changed is read in groups of fields (IPRS, Receipt, GST invoice,
+// Phone...), defined by the server and sent with the summary: a save counts
+// once for each group it touched. Results such as total outstanding move with
+// every edit, so they are in no group.
 
 const PAGE = 200;
 
@@ -54,8 +65,15 @@ const inRange = (at, r) => {
 };
 
 // ── What happened ───────────────────────────────────────────────────────
+const WORK_ACTIONS = [
+  'entry.created', 'entry.updated', 'entry.submitted', 'entry.deleted',
+  'client.created', 'client.updated', 'client.deactivated', 'client.reactivated', 'client.deleted', 'client.imported',
+  'mail.sent', 'mail.failed',
+];
+const DEFAULT_KIND = 'work';
 const KINDS = [
-  { id: 'all', label: 'Everything', actions: [] },
+  { id: 'work', label: 'All work', actions: WORK_ACTIONS },
+  { id: 'all', label: 'Everything, with opens and sign-ins', actions: [] },
   { id: 'entries', label: 'All entry work', actions: ['entry.created', 'entry.updated', 'entry.submitted', 'entry.deleted'] },
   { id: 'added', label: 'Entries added', actions: ['entry.created'] },
   { id: 'edited', label: 'Entries edited', actions: ['entry.updated'] },
@@ -91,17 +109,23 @@ const PLACES = {
   'mail-wizard': 'the mail wizard',
 };
 
-// Columns of the team and client tables, and the headline tiles.
-const COUNTERS = [
-  { key: 'added', label: 'Added', tone: 'green', actions: ['entry.created'] },
-  { key: 'edited', label: 'Edited', tone: 'orange', actions: ['entry.updated'] },
-  { key: 'submitted', label: 'Submitted', tone: 'blue', actions: ['entry.submitted'] },
-  { key: 'deleted', label: 'Deleted', tone: 'red', actions: ['entry.deleted', 'client.deleted'] },
-  { key: 'viewed', label: 'Opened', tone: 'muted', actions: ['client.viewed'] },
-  { key: 'clients', label: 'Client edits', tone: 'purple', actions: ['client.created', 'client.updated', 'client.deactivated', 'client.reactivated', 'client.imported'] },
-  { key: 'mail', label: 'Mails', tone: 'blue', actions: ['mail.sent'] },
+// What was done, in the order it is said. `count` words a person's line
+// ("3 added"), `say` a client's ("Added Sep 2026"). The quiet ones are only
+// mentioned when there is nothing else to say.
+const plural = (n, one, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`;
+const WORK = [
+  { key: 'added', tone: 'green', actions: ['entry.created'], count: (n) => `${n} added`, say: 'Added' },
+  { key: 'edited', tone: 'orange', actions: ['entry.updated'], count: (n) => `${n} edited`, say: 'Edited' },
+  { key: 'submitted', tone: 'blue', actions: ['entry.submitted'], count: (n) => `${n} submitted`, say: 'Submitted' },
+  { key: 'deleted', tone: 'red', actions: ['entry.deleted', 'client.deleted'], count: (n) => `${n} deleted`, say: 'Deleted' },
+  { key: 'clients', tone: 'purple', actions: ['client.created', 'client.updated', 'client.deactivated', 'client.reactivated', 'client.imported'], count: (n) => plural(n, 'client update'), say: 'Client details updated' },
+  { key: 'mail', tone: 'blue', actions: ['mail.sent'], count: (n) => plural(n, 'mail'), say: 'Mail sent' },
+  { key: 'mailFailed', tone: 'red', actions: ['mail.failed'], count: (n) => plural(n, 'failed mail'), say: 'Mail failed' },
+  { key: 'resaved', tone: 'muted', quiet: true, actions: ['entry.resaved'], count: (n) => `saved ${plural(n, 'time')} with no change`, say: 'Saved again, nothing changed' },
+  { key: 'viewed', tone: 'muted', quiet: true, actions: ['client.viewed'], count: (n) => `opened ${plural(n, 'time')}`, say: 'Only opened' },
+  { key: 'login', tone: 'muted', quiet: true, actions: ['auth.login'], count: (n) => `signed in ${plural(n, 'time')}`, say: 'Signed in' },
 ];
-const counter = (key) => COUNTERS.find((c) => c.key === key);
+const work = (key) => WORK.find((w) => w.key === key);
 const countOf = (actions, list) => list.reduce((s, a) => s + (actions?.[a] || 0), 0);
 const isWork = (actions) => Object.keys(actions || {}).some((a) => a !== 'client.viewed' && a !== 'auth.login');
 
@@ -121,7 +145,7 @@ const showValue = (kind, v) => {
   return String(v);
 };
 
-const num = (n) => (n ? n.toLocaleString('en-IN') : '—');
+const capital = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const dayKey = (value) => new Date(value).toLocaleDateString('en-CA');
 const dayLabel = (key) => {
   if (key === startOfDay(0).toLocaleDateString('en-CA')) return 'Today';
@@ -133,6 +157,16 @@ const dayLabel = (key) => {
 const timeOnly = (value) => new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 const shortDate = (value) => new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 const monthText = (e) => (e.month ? `${MONTH_LABELS[e.month] || e.month} ${e.year || ''}`.trim() : '');
+
+// 'Jul, Aug, Sep 2026' for the months a set of saves touched, in calendar order.
+const CALENDAR = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function monthsText(events) {
+  const seen = new Map();
+  for (const e of events) if (e.month) seen.set(`${e.year}-${e.month}`, e);
+  const list = [...seen.values()].sort((a, b) => (a.year - b.year) || (CALENDAR.indexOf(a.month) - CALENDAR.indexOf(b.month)));
+  const short = (e) => (MONTH_LABELS[e.month] || e.month).slice(0, 3);
+  return list.map((e, i) => (i === list.length - 1 || list[i + 1].year !== e.year ? `${short(e)} ${e.year || ''}`.trim() : short(e))).join(', ');
+}
 
 // ── Entries as timeline items (before events were recorded) ────────────
 const stampOf = (e) => e.updatedAt || e.createdAt;
@@ -192,15 +226,69 @@ function describe(e) {
 
 const hasFigures = (e) => e.action.startsWith('entry.') && e.meta?.royalty !== undefined;
 
-// ── Timeline row ────────────────────────────────────────────────────────
-function EventRow({ event, who, onPickClient }) {
+// ── Field groups ────────────────────────────────────────────────────────
+const scopeOf = (action) => action.split('.')[0];
+const SCOPE_LABELS = { entry: 'Monthly entry', client: 'Client master' };
+
+// Counts keyed by group, as chips in the server's own order.
+function FieldChips({ groups, counts, plain, picked, onPick }) {
+  const hit = groups.filter((g) => counts?.[g.key]);
+  if (!hit.length) return null;
+  const Chip = onPick ? 'button' : 'span';
+  return (
+    <span className="act-fields">
+      <span className="act-fields-word">Changed</span>
+      {hit.map((g) => (
+        <Chip
+          key={g.key}
+          {...(onPick ? { type: 'button', onClick: (ev) => { ev.stopPropagation(); onPick(g.key); }, 'aria-pressed': picked === g.key } : {})}
+          className={`act-field act-field--${g.scope}${picked === g.key ? ' picked' : ''}`}
+          title={`${SCOPE_LABELS[g.scope]}: ${g.label}`}
+        >
+          {g.label}
+          {!plain && counts[g.key] > 1 && <b>{counts[g.key]}</b>}
+        </Chip>
+      ))}
+    </span>
+  );
+}
+
+// ── What was done, as a sentence ────────────────────────────────────────
+// `events` (a client's line) adds the months each thing was done to.
+function Said({ actions, events, automatic, lead }) {
+  const hit = WORK.filter((w) => countOf(actions, w.actions));
+  const loud = hit.filter((w) => !w.quiet);
+  const monthsOf = (w) => (events
+    ? monthsText(events.filter((e) => e.action.startsWith('entry.') && w.actions.includes(countedAs(e))))
+    : '');
+  if (automatic) {
+    return <span className="act-said"><span><b className="act-verb--muted">Recalculated</b> {monthsText(events || [])}</span></span>;
+  }
+  return (
+    <span className="act-said">
+      {lead && <span><b>{lead}</b></span>}
+      {(loud.length ? loud : hit).map((w) => {
+        const n = countOf(actions, w.actions);
+        return (
+          <span key={w.key}>
+            {events
+              ? <><b className={`act-verb--${w.tone}`}>{w.say}</b> {monthsOf(w)}</>
+              : <b className={`act-verb--${w.tone}`}>{w.count(n)}</b>}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+// ── One save, inside a client's line ────────────────────────────────────
+function EventRow({ event, groups, groupOf }) {
   const [open, setOpen] = useState(false);
   const info = event.legacy && !event.userEmail
     ? { pill: 'Recalculated', tone: 'muted' }
     : ACTION_INFO[event.action] || { pill: event.action, tone: 'muted' };
   const detail = (event.changes?.length || 0) > 0 || hasFigures(event);
   const m = event.meta || {};
-  const pick = (ev) => { ev.stopPropagation(); onPickClient(event.clientId, event.clientName); };
   return (
     <li className={`act-row${open ? ' is-open' : ''}${event.legacy ? ' is-legacy' : ''}`}>
       <button
@@ -217,26 +305,7 @@ function EventRow({ event, who, onPickClient }) {
         >
           {info.pill}
         </span>
-        <span className="act-text">
-          <strong className={`act-who${event.userEmail ? '' : ' auto-account'}`}>{who}</strong>{' '}
-          {describe(event)}
-          {event.clientId && (
-            <>
-              {' — '}
-              <span
-                className="act-client"
-                role="link"
-                tabIndex={0}
-                onClick={pick}
-                onKeyDown={(ev) => ev.key === 'Enter' && pick(ev)}
-                title="Show only this client"
-              >
-                {event.clientName || event.clientId}
-              </span>
-              <span className="entry-mrm">{event.clientId}</span>
-            </>
-          )}
-        </span>
+        <span className="act-text">{capital(describe(event))}</span>
         <span className="act-side">
           {hasFigures(event) && <span className="act-os">O/S <b>{money(m.totalOutstanding)}</b></span>}
           {detail && (
@@ -253,7 +322,7 @@ function EventRow({ event, who, onPickClient }) {
             <table className="act-changes">
               <tbody>
                 {event.changes.map((c) => (
-                  <tr key={c.field}>
+                  <tr key={c.field} className={groups.length && !groupOf(event.action, c.field) ? 'is-result' : undefined}>
                     <th>{c.label || c.field}</th>
                     <td className="act-from">{showValue(c.kind, c.from)}</td>
                     <td className="act-arrow">&rarr;</td>
@@ -284,6 +353,69 @@ function EventRow({ event, who, onPickClient }) {
   );
 }
 
+// ── One client, one person, one day ─────────────────────────────────────
+// Events arrive newest first; each person-and-client pair becomes one line,
+// placed by its latest save. Sign-ins and imports have no client and sit on
+// the person's own line.
+// As the server's summary counts it: a save that changed nothing is not an edit.
+const countedAs = (e) => (e.action === 'entry.updated' && !e.legacy && !e.changes?.length ? 'entry.resaved' : e.action);
+
+function groupWork(events, groupOf) {
+  const map = new Map();
+  for (const e of events) {
+    const key = `${e.userEmail}|${e.clientId || ''}`;
+    if (!map.has(key)) {
+      map.set(key, { key, userEmail: e.userEmail, clientId: e.clientId, clientName: e.clientName, at: e.at, events: [], actions: {}, fields: {} });
+    }
+    const g = map.get(key);
+    g.events.push(e);
+    const action = countedAs(e);
+    g.actions[action] = (g.actions[action] || 0) + 1;
+    const touched = new Set((e.changes || []).map((c) => groupOf(e.action, c.field)?.key).filter(Boolean));
+    for (const k of touched) g.fields[k] = (g.fields[k] || 0) + 1;
+  }
+  return [...map.values()];
+}
+
+function ClientRow({ group, who, groups, groupOf }) {
+  const [open, setOpen] = useState(false);
+  const automatic = group.events.every((e) => e.legacy && !e.userEmail);
+  const latest = group.events.find(hasFigures);
+  return (
+    <li className={`act-group${open ? ' is-open' : ''}`}>
+      <button type="button" className="act-group-main" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="act-time">{timeOnly(group.at)}</span>
+        <span className="act-group-client">
+          {group.clientId
+            ? <><strong>{group.clientName || group.clientId}</strong><span className="entry-mrm">{group.clientId}</span></>
+            : <strong>{who}</strong>}
+          {group.clientId && <small className={group.userEmail ? '' : 'auto-account'}>{who}</small>}
+        </span>
+        <span className="act-group-work">
+          <Said actions={group.actions} events={group.events} automatic={automatic} />
+          <FieldChips groups={groups} counts={group.fields} plain />
+        </span>
+        <span className="act-side">
+          {latest && (
+            <span className="act-os" title={`Total outstanding after the last save (${monthText(latest)})`}>
+              O/S <b>{money(latest.meta.totalOutstanding)}</b>
+            </span>
+          )}
+          <span className="act-more">
+            {open ? 'Hide' : 'Details'}
+            <Icon name="chevron-down" size={14} />
+          </span>
+        </span>
+      </button>
+      {open && (
+        <ul className="act-steps">
+          {group.events.map((e) => <EventRow key={e._id} event={e} groups={groups} groupOf={groupOf} />)}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 // ── Page ────────────────────────────────────────────────────────────────
 function EntriesPage() {
   const { user } = useAuth();
@@ -291,10 +423,11 @@ function EntriesPage() {
   const [period, setPeriod] = useState('today');
   const [day, setDay] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [person, setPerson] = useState(null);      // email, AUTOMATIC or null for everyone
-  const [kind, setKind] = useState('all');
+  const [kind, setKind] = useState(DEFAULT_KIND);
+  const [moreFilters, setMoreFilters] = useState(false);
   const [status, setStatus] = useState('all');
   const [month, setMonth] = useState('all');
-  const [client, setClient] = useState(null);      // { clientId, clientName }
+  const [field, setField] = useState('all');       // a field group's key
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
 
@@ -332,12 +465,12 @@ function EntriesPage() {
     const p = { ...rangeParams, limit: PAGE };
     if (person !== null) p.user = person;
     if (actionsFilter.length) p.action = actionsFilter.join(',');
-    if (client) p.clientId = client.clientId;
     if (status !== 'all') p.status = status;
     if (month !== 'all') p.month = month;
+    if (field !== 'all') p.field = field;
     if (debounced) p.search = debounced;
     return p;
-  }, [rangeParams, person, actionsFilter, client, status, month, debounced]);
+  }, [rangeParams, person, actionsFilter, status, month, field, debounced]);
 
   const loadActivity = useCallback(() => {
     let cancelled = false;
@@ -376,24 +509,25 @@ function EntriesPage() {
 
   const legacyShown = useMemo(() => {
     const term = debounced.toLowerCase();
+    // What changed is unknown for entry-record items.
+    if (field !== 'all') return [];
     // Entry-record items are only ever "added" or "edited".
     if (actionsFilter.length && !actionsFilter.some((a) => a === 'entry.created' || a === 'entry.updated')) return [];
     return legacyInPeriod.filter((it) => {
       if (person !== null && it.userEmail !== person) return false;
       if (actionsFilter.length && !actionsFilter.includes(it.action)) return false;
-      if (client && it.clientId !== client.clientId) return false;
       if (status !== 'all' && it.meta.status !== status) return false;
       if (month !== 'all' && it.month !== month) return false;
       if (term && ![it.clientName, it.clientId, it.userEmail].some((v) => (v || '').toLowerCase().includes(term))) return false;
       return true;
     });
-  }, [legacyInPeriod, person, actionsFilter, client, status, month, debounced]);
+  }, [legacyInPeriod, person, actionsFilter, status, month, field, debounced]);
 
   // Everyone's numbers for the period: recorded events plus entry-record saves.
   const team = useMemo(() => {
     const map = new Map();
     const get = (email) => {
-      if (!map.has(email)) map.set(email, { email, name: '', role: '', actions: {}, first: null, last: null, clients: new Map(), lastSaved: 0 });
+      if (!map.has(email)) map.set(email, { email, name: '', role: '', actions: {}, fields: {}, first: null, last: null, clients: new Map() });
       return map.get(email);
     };
     const stretch = (p, at) => {
@@ -405,6 +539,7 @@ function EntriesPage() {
     for (const sp of summary?.people || []) {
       const p = get(sp.email);
       for (const [a, n] of Object.entries(sp.actions)) p.actions[a] = (p.actions[a] || 0) + n;
+      for (const [g, n] of Object.entries(sp.fields || {})) p.fields[g] = (p.fields[g] || 0) + n;
       stretch(p, sp.first); stretch(p, sp.last);
       for (const c of sp.clients) p.clients.set(c.clientId, { ...c, actions: { ...c.actions } });
     }
@@ -417,16 +552,12 @@ function EntriesPage() {
       c.actions[it.action] = (c.actions[it.action] || 0) + 1;
       if (!c.last || new Date(it.at) > new Date(c.last)) c.last = it.at;
     }
-    for (const e of entries || []) {
-      if (!everyone && e.lastEditedByEmail !== user?.email) continue;
-      get(e.lastEditedByEmail || AUTOMATIC).lastSaved++;
-    }
     return [...map.values()]
       .map((p) => ({ ...p, clients: [...p.clients.values()].sort((a, b) => new Date(b.last) - new Date(a.last)) }))
       // Keep the automatic row only when it has something to say.
       .filter((p) => p.email !== AUTOMATIC || p.last)
-      .sort((a, b) => (b.last ? 1 : 0) - (a.last ? 1 : 0) || new Date(b.last || 0) - new Date(a.last || 0) || b.lastSaved - a.lastSaved);
-  }, [summary, legacyInPeriod, entries, everyone, user]);
+      .sort((a, b) => new Date(b.last || 0) - new Date(a.last || 0));
+  }, [summary, legacyInPeriod]);
 
   const nameOf = useCallback((email) => {
     if (!email) return AUTOMATIC_LABEL;
@@ -435,22 +566,30 @@ function EntriesPage() {
   }, [team]);
 
   const selected = person !== null ? team.find((p) => p.email === person) : null;
+  const active = team.filter((p) => p.last);
+  const idle = team.filter((p) => !p.last && p.email);
+
+  const groups = useMemo(() => summary?.fieldGroups || [], [summary]);
+  const groupOf = useMemo(() => {
+    const map = new Map();
+    for (const g of groups) for (const f of g.fields) map.set(`${g.scope}:${f}`, g);
+    return (action, name) => map.get(`${scopeOf(action)}:${name}`);
+  }, [groups]);
+
 
   // Headline tiles follow the chosen person, else everyone.
   const headline = useMemo(() => {
     const people = selected ? [selected] : team;
-    const total = (key) => people.reduce((s, p) => s + countOf(p.actions, counter(key).actions), 0);
+    const total = (key) => people.reduce((s, p) => s + countOf(p.actions, work(key).actions), 0);
     const worked = new Set();
-    const opened = new Set();
     for (const p of people) {
       for (const c of p.clients) {
         if (isWork(c.actions)) worked.add(c.clientId);
-        if (c.actions['client.viewed']) opened.add(c.clientId);
       }
     }
     return {
       added: total('added'), edited: total('edited'), submitted: total('submitted'),
-      deleted: total('deleted'), worked: worked.size, opened: opened.size,
+      deleted: total('deleted'), worked: worked.size,
     };
   }, [team, selected]);
 
@@ -482,8 +621,8 @@ function EntriesPage() {
       if (!out.length || out[out.length - 1].key !== key) out.push({ key, events: [] });
       out[out.length - 1].events.push(e);
     }
-    return out;
-  }, [feed]);
+    return out.map((d) => ({ key: d.key, work: groupWork(d.events, groupOf) }));
+  }, [feed, groupOf]);
 
   const showOlder = async () => {
     if (!moreEvents) { setLegacyLimit((n) => n + PAGE); return; }
@@ -499,10 +638,9 @@ function EntriesPage() {
     }
   };
 
-  const pickClient = (clientId, clientName) => setClient({ clientId, clientName });
-  const filtersOn = person !== null || kind !== 'all' || status !== 'all' || month !== 'all' || client || search;
+  const filtersOn = person !== null || kind !== DEFAULT_KIND || status !== 'all' || month !== 'all' || field !== 'all' || search;
   const clearFilters = () => {
-    setPerson(null); setKind('all'); setStatus('all'); setMonth('all'); setClient(null); setSearch('');
+    setPerson(null); setKind(DEFAULT_KIND); setStatus('all'); setMonth('all'); setField('all'); setSearch('');
   };
   const singleDay = ['today', 'yesterday', 'day'].includes(period);
   const periodName = period === 'day'
@@ -515,7 +653,6 @@ function EntriesPage() {
     { key: 'submitted', label: 'Submitted', value: headline.submitted, tone: 'blue' },
     { key: 'deleted', label: 'Deleted', value: headline.deleted, tone: 'red' },
     { key: 'worked', label: 'Clients worked on', value: headline.worked, tone: 'purple' },
-    { key: 'opened', label: 'Clients opened', value: headline.opened, tone: 'muted' },
   ];
 
   if (error && !summary && !entries) {
@@ -578,102 +715,49 @@ function EntriesPage() {
 
       {error && <div className="act-note act-note--error">{error}</div>}
 
-      {/* Team */}
+      {/* Team: one line per person */}
       <div className="report-container act-team">
         <div className="report-header">
           <h3><Icon name="users" size={18} />{everyone ? 'Team' : 'You'}</h3>
-          <span className="count">Click a person to focus on them</span>
+          <span className="count">Click a person to see only their work</span>
         </div>
-        <div className="table-wrapper">
-          <table className="report-table">
-            <thead>
-              <tr>
-                <th>Person</th>
-                {COUNTERS.map((c) => <th key={c.key} style={{ textAlign: 'right' }}>{c.label}</th>)}
-                <th style={{ textAlign: 'right' }} title="Clients worked on (opening a client alone does not count)">Clients</th>
-                <th title={singleDay ? 'First to last activity' : 'First to last active day'}>{singleDay ? 'Window' : 'Active'}</th>
-                <th style={{ textAlign: 'right' }} title="Entries this account was the last to save, across all time">Last saved</th>
-              </tr>
-            </thead>
-            <tbody>
-              {team.map((p) => {
-                const picked = person === p.email;
-                const idle = !p.last;
-                const worked = p.clients.filter((c) => isWork(c.actions)).length;
-                return (
-                  <tr
-                    key={p.email || 'automatic'}
-                    className={`account-row${picked ? ' picked' : ''}${idle ? ' act-idle' : ''}`}
-                    onClick={() => { setPerson(picked ? null : p.email); setClient(null); }}
-                  >
-                    <td>
-                      <div className="act-person-cell">
-                        <span className={`act-avatar${p.email ? '' : ' act-avatar--auto'}`}>
-                          {p.email ? (p.name || p.email).charAt(0).toUpperCase() : '⟳'}
-                        </span>
-                        <span>
-                          <strong className={p.email ? '' : 'auto-account'}>{p.email ? p.name || p.email : AUTOMATIC_LABEL}</strong>
-                          {p.email && p.name && <small>{p.email}</small>}
-                        </span>
-                        {p.role === 'admin' && <span className="act-role">admin</span>}
-                      </div>
-                    </td>
-                    {COUNTERS.map((c) => {
-                      const n = countOf(p.actions, c.actions);
-                      return <td key={c.key} style={{ textAlign: 'right' }} className={n ? `act-num--${c.tone}` : 'act-num--zero'}>{num(n)}</td>;
-                    })}
-                    <td style={{ textAlign: 'right' }}>{num(worked)}</td>
-                    <td className="act-window">
-                      {idle ? <span className="act-num--zero">No activity</span> : singleDay
-                        ? `${timeOnly(p.first)} – ${timeOnly(p.last)}`
-                        : `${shortDate(p.first)} – ${shortDate(p.last)}`}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>{num(p.lastSaved)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="act-people">
+          {active.map((p) => {
+            const picked = person === p.email;
+            const worked = p.clients.filter((c) => isWork(c.actions)).length;
+            return (
+              <li key={p.email || 'automatic'}>
+                <button
+                  type="button"
+                  className={`act-person${picked ? ' picked' : ''}`}
+                  onClick={() => setPerson(picked ? null : p.email)}
+                  aria-pressed={picked}
+                >
+                  <span className="act-person-cell">
+                    <span className={`act-avatar${p.email ? '' : ' act-avatar--auto'}`}>
+                      {p.email ? (p.name || p.email).charAt(0).toUpperCase() : '⟳'}
+                    </span>
+                    <span>
+                      <strong className={p.email ? '' : 'auto-account'}>{p.email ? p.name || p.email : AUTOMATIC_LABEL}</strong>
+                      <small>
+                        {singleDay ? `${timeOnly(p.first)} – ${timeOnly(p.last)}` : `${shortDate(p.first)} – ${shortDate(p.last)}`}
+                      </small>
+                    </span>
+                  </span>
+                  <span className="act-group-work">
+                    <Said actions={p.actions} automatic={!p.email} lead={worked > 0 && plural(worked, 'client')} />
+                    <FieldChips groups={groups} counts={p.fields} />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {active.length === 0 && <li className="act-people-none">Nobody did anything {periodName}.</li>}
+        </ul>
+        {idle.length > 0 && (
+          <p className="act-people-idle">No activity {periodName}: {idle.map((p) => p.name || p.email).join(', ')}</p>
+        )}
       </div>
-
-      {/* One person's clients */}
-      {selected && selected.clients.length > 0 && (
-        <div className="report-container act-clients">
-          <div className="report-header">
-            <h3><Icon name="file-text" size={18} />Clients {nameOf(selected.email)} touched, {periodName}</h3>
-            <span className="count">{selected.clients.length}</span>
-          </div>
-          <div className="table-wrapper">
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  {COUNTERS.map((c) => <th key={c.key} style={{ textAlign: 'right' }}>{c.label}</th>)}
-                  <th>Last</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selected.clients.map((c) => (
-                  <tr
-                    key={c.clientId}
-                    className={`account-row${client?.clientId === c.clientId ? ' picked' : ''}`}
-                    onClick={() => (client?.clientId === c.clientId ? setClient(null) : pickClient(c.clientId, c.clientName))}
-                    title="Show only this client in the timeline"
-                  >
-                    <td>{c.clientName || c.clientId}<span className="entry-mrm">{c.clientId}</span></td>
-                    {COUNTERS.map((k) => {
-                      const n = countOf(c.actions, k.actions);
-                      return <td key={k.key} style={{ textAlign: 'right' }} className={n ? `act-num--${k.tone}` : 'act-num--zero'}>{num(n)}</td>;
-                    })}
-                    <td>{formatDateTime(c.last)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Timeline filters */}
       <div className="filter-bar">
@@ -690,39 +774,35 @@ function EntriesPage() {
         <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="What happened">
           {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
         </select>
-        {everyone && (
-          <select
-            value={person === null ? '__all' : person}
-            onChange={(e) => setPerson(e.target.value === '__all' ? null : e.target.value)}
-            aria-label="Person"
-          >
-            <option value="__all">Everyone</option>
-            {team.map((p) => (
-              <option key={p.email || 'automatic'} value={p.email}>
-                {p.email ? (p.name ? `${p.name} (${p.email})` : p.email) : AUTOMATIC_LABEL}
-              </option>
+        {groups.length > 0 && (
+          <select value={field} onChange={(e) => setField(e.target.value)} aria-label="Field changed">
+            <option value="all">Any field changed</option>
+            {Object.entries(SCOPE_LABELS).map(([scope, label]) => (
+              <optgroup key={scope} label={label}>
+                {groups.filter((g) => g.scope === scope).map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+              </optgroup>
             ))}
           </select>
         )}
-        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Entry status">
-          <option value="all">Any status</option>
-          <option value="draft">Draft</option>
-          <option value="submitted">Submitted</option>
-        </select>
-        <select value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Entry month">
-          <option value="all">Any month</option>
-          {Object.entries(MONTH_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </select>
-        {client && (
-          <button type="button" className="act-chip" onClick={() => setClient(null)} title="Show all clients">
-            {client.clientName || client.clientId}
-            <span aria-hidden="true">&times;</span>
-          </button>
+        {(moreFilters || status !== 'all' || month !== 'all') ? (
+          <>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Entry status">
+              <option value="all">Any status</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+            </select>
+            <select value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Entry month">
+              <option value="all">Any month</option>
+              {Object.entries(MONTH_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </>
+        ) : (
+          <button type="button" className="login-link act-clear" onClick={() => setMoreFilters(true)}>More filters</button>
         )}
         {filtersOn && <button type="button" className="login-link act-clear" onClick={clearFilters}>Clear filters</button>}
       </div>
 
-      {/* Timeline */}
+      {/* Work: one line per client, per person, per day */}
       {loading && !events.length ? (
         <div className="empty-state"><h3>Loading&hellip;</h3></div>
       ) : feed.length === 0 ? (
@@ -736,11 +816,11 @@ function EntriesPage() {
             <section className="entry-day" key={d.key}>
               <div className="entry-day-head">
                 <h3>{dayLabel(d.key)}</h3>
-                <span>{d.events.length}{hasOlder && d === days[days.length - 1] ? '+' : ''}</span>
+                <span>{d.work.length}{hasOlder && d === days[days.length - 1] ? '+' : ''}</span>
               </div>
               <ul className="act-list">
-                {d.events.map((e) => (
-                  <EventRow key={e._id} event={e} who={nameOf(e.userEmail)} onPickClient={pickClient} />
+                {d.work.map((g) => (
+                  <ClientRow key={g.key} group={g} who={nameOf(g.userEmail)} groups={groups} groupOf={groupOf} />
                 ))}
               </ul>
             </section>
