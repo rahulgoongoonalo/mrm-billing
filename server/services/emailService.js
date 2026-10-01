@@ -156,6 +156,7 @@ const sendPasswordResetEmail = async (email, token, name) => {
 
 module.exports = {
   getTransporter,
+  brevoSendMail,
   getClientTransporter,
   sendVerificationEmail,
   sendPasswordResetEmail

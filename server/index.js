@@ -18,7 +18,8 @@ const path = require('path');
 const Settings = require('./models/Settings');
 
 // Import notification service
-const { sendOutstandingNotification } = require('./services/outstandingNotification');
+const { sendOutstandingNotification, monthlyRecipients } = require('./services/outstandingNotification');
+const { sendDailyTeamReports, sendWeeklyTeamReport } = require('./services/teamReportNotification');
 const { sendLowRoyaltyReport } = require('./services/lowRoyaltyNotification');
 
 const app = express();
@@ -123,6 +124,27 @@ app.listen(PORT, async () => {
     sendOutstandingNotification();
   }, { timezone: 'Asia/Kolkata' });
   console.log('Outstanding notification scheduled daily at 7:00 PM IST');
+
+  // Outstanding report to the managers — monthly, on the 1st at 10:00 AM IST
+  cron.schedule('0 10 1 * *', () => {
+    console.log('Running monthly outstanding notification...');
+    sendOutstandingNotification({ to: monthlyRecipients });
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('Monthly outstanding notification scheduled on the 1st at 10:00 AM IST');
+
+  // Each team member's own work report — daily at 8:00 PM IST
+  cron.schedule('0 20 * * *', () => {
+    console.log('Running daily work reports...');
+    sendDailyTeamReports();
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('Daily work reports scheduled at 8:00 PM IST');
+
+  // Weekly work tracker for the managers — Mondays at 9:30 AM IST, last Mon–Sun
+  cron.schedule('30 9 * * 1', () => {
+    console.log('Running weekly work tracker...');
+    sendWeeklyTeamReport();
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('Weekly work tracker scheduled Mondays at 9:30 AM IST');
 
   // Low Royalty Report — monthly, on the 19th at 9:00 AM IST
   cron.schedule('0 9 19 * *', () => {
