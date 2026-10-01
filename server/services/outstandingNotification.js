@@ -4,7 +4,9 @@ const { getTransporter } = require('./emailService');
 const { newClientsThisMonth, buildOutstandingMailHtml, formatCurrency } = require('./outstandingMail');
 const { summarise } = require('./outstandingSummary');
 
-const recipients = 'rahul.goongoonalo@gmail.com, sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com, accounts@musicrightsmanagementindia.com';
+// Every evening to these; once a month (the 1st) to the managers.
+const dailyRecipients = 'rahul.goongoonalo@gmail.com, accounts@musicrightsmanagementindia.com';
+const monthlyRecipients = 'sherley@musicrightsmanagementindia.com, devi@musicrightsmanagementindia.com';
 
 /**
  * Gather every client's latest-month outstanding plus this month's new clients.
@@ -30,7 +32,7 @@ async function collectOutstanding() {
   };
 }
 
-async function sendOutstandingNotification() {
+async function sendOutstandingNotification({ to = dailyRecipients } = {}) {
   try {
     const { entries, rows, newClients, totalReceivable, owing } = await collectOutstanding();
 
@@ -44,7 +46,7 @@ async function sendOutstandingNotification() {
 
     await getTransporter().sendMail({
       from: process.env.EMAIL_FROM,
-      to: recipients,
+      to,
       subject: `MRM Outstanding Report - ${dateStr} (${owing} of ${rows.length} clients owing | ${formatCurrency(totalReceivable)})`,
       html,
     });
@@ -55,4 +57,4 @@ async function sendOutstandingNotification() {
   }
 }
 
-module.exports = { sendOutstandingNotification, collectOutstanding };
+module.exports = { sendOutstandingNotification, collectOutstanding, dailyRecipients, monthlyRecipients };
