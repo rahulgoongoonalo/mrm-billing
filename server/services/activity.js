@@ -104,15 +104,15 @@ function diffEntry(before, after) {
       }
     }
   }
-  // A society's rate set for this month only.
-  const overridesOf = (e) => new Map((e.rateOverrides || []).map((o) => [o.society, round2(o.rate)]));
-  const fromRates = overridesOf(b);
-  const toRates = overridesOf(after);
-  const rateText = (v) => (v == null ? 'client master' : `${v}%`);
+  // A society's commission typed by hand for this month (unlocked).
+  const typedOf = (e) => new Map((e.commissionOverrides || []).map((o) => [o.society, round2(o.amount)]));
+  const fromTyped = typedOf(b);
+  const toTyped = typedOf(after);
+  const typedText = (v) => (v == null ? 'calculated' : `typed ${v}`);
   for (const society of SOCIETIES) {
-    const f = fromRates.has(society) ? fromRates.get(society) : null;
-    const t = toRates.has(society) ? toRates.get(society) : null;
-    if (f !== t) changes.push({ field: `${society}.monthRate`, label: `${society} rate this month`, kind: 'text', from: rateText(f), to: rateText(t) });
+    const f = fromTyped.has(society) ? fromTyped.get(society) : null;
+    const t = toTyped.has(society) ? toTyped.get(society) : null;
+    if (f !== t) changes.push({ field: `${society}.typedCommission`, label: `${society} commission (unlocked)`, kind: 'text', from: typedText(f), to: typedText(t) });
   }
   const fromStatus = b.status || '';
   const toStatus = after.status || 'draft';
@@ -208,7 +208,7 @@ const FIELD_GROUPS = [
   { key: 'entry:receipt', scope: 'entry', label: 'Receipt', fields: ['currentMonthReceipt', 'previousMonthReceipt'] },
   { key: 'entry:tds', scope: 'entry', label: 'TDS', fields: ['currentMonthTds', 'previousMonthTds'] },
   { key: 'entry:opening', scope: 'entry', label: 'Opening balance', fields: ['previousMonthOutstanding'] },
-  { key: 'entry:commissionRate', scope: 'entry', label: 'Commission rate', fields: ['commissionRate', ...SOCIETIES.map((s) => `${s}.monthRate`)] },
+  { key: 'entry:commissionRate', scope: 'entry', label: 'Commission rate', fields: ['commissionRate', ...SOCIETIES.map((s) => `${s}.typedCommission`)] },
   { key: 'entry:gstRate', scope: 'entry', label: 'GST rate', fields: ['gstRate'] },
   { key: 'entry:status', scope: 'entry', label: 'Status', fields: ['status'] },
   ...CLIENT_FIELDS.map((f) => ({ key: `client:${f.field}`, scope: 'client', label: f.label, fields: [f.field] })),

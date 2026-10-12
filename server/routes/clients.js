@@ -3,6 +3,7 @@ const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const ReferralDeal = require('../models/ReferralDeal');
+const ActivityEvent = require('../models/ActivityEvent');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
 const activity = require('../services/activity');
@@ -139,33 +140,24 @@ router.post('/', async (req, res) => {
     // Check if client ID already exists
     const existingClient = await Client.findOne({ clientId });
     if (existingClient) {
-      // If client exists but is inactive, reactivate with new data
-      if (!existingClient.isActive) {
-        if (req.body.joiningDate && await joiningConflict(res, clientId, req.body.joiningDate)) return;
-        const before = activity.clientSnapshot(existingClient);
-        existingClient.name = name || existingClient.name;
-        if (!sendsProfile && type) existingClient.type = type;
-        existingClient.fee = fee !== undefined ? parseFloat(fee) : existingClient.fee;
-        if (commissionRate !== undefined) existingClient.commissionRate = parseFloat(commissionRate) || 0;
-        if (gstRate !== undefined) existingClient.gstRate = parseFloat(gstRate);
-        existingClient.previousBalance = previousBalance !== undefined ? previousBalance : existingClient.previousBalance;
-        if (!sendsProfile) {
-          existingClient.iprs = iprs !== undefined ? iprs : existingClient.iprs;
-          existingClient.prs = prs !== undefined ? prs : existingClient.prs;
-          existingClient.isamra = isamra !== undefined ? isamra : existingClient.isamra;
-        }
-        applyProfileFields(existingClient, req.body);
-        existingClient.isActive = true;
-        await existingClient.save();
-        await activity.record(req, {
-          action: 'client.reactivated',
-          clientId: existingClient.clientId,
-          clientName: existingClient.name,
-          changes: activity.diffClient(before, activity.clientSnapshot(existingClient)),
-        });
-        return res.status(201).json(existingClient);
+      if (existingClient.isActive !== false) {
+        return res.status(400).json({ message: 'Client ID already exists' });
       }
-      return res.status(400).json({ message: 'Client ID already exists' });
+      // The ID belongs to a client removed under the old soft delete. Bringing
+      // that record back used to revive its old months under the new client,
+      // so it is never reused while it still holds entries.
+      const oldEntries = await RoyaltyAccounting.countDocuments({ clientId });
+      if (oldEntries > 0) {
+        return res.status(409).json({
+          message: `${clientId} belonged to the removed client "${existingClient.name}", which still has ${oldEntries} monthly entries. Use another ID, or delete that client permanently first.`,
+        });
+      }
+      // Nothing of the old client's money is left, so clear its leftovers and
+      // start the ID afresh.
+      await purgeClientRecords(clientId);
+    } else if (await RoyaltyAccounting.exists({ clientId })) {
+      // Months left behind under this ID with no client: never hand them to a new one.
+      return res.status(409).json({ message: `${clientId} still has monthly entries from an earlier client. Use another ID.` });
     }
 
     const client = new Client({
@@ -316,6 +308,20 @@ router.put('/:id', async (req, res) => {
 // @route   DELETE /api/clients/:id
 // @desc    Soft delete a client (mark as inactive)
 // @access  Public
+// Everything stored under one client ID: its monthly entries (with their mail
+// log), referral deals and activity history. Payouts already made to a
+// referrer stay - that money was paid. Every query is an exact clientId match,
+// so no other client is touched.
+async function purgeClientRecords(clientId) {
+  const [entries, deals] = await Promise.all([
+    RoyaltyAccounting.deleteMany({ clientId }),
+    ReferralDeal.deleteMany({ clientId }),
+    ActivityEvent.deleteMany({ clientId }),
+    Client.deleteMany({ clientId, isActive: false }),
+  ]);
+  return { entries: entries.deletedCount || 0, deals: deals.deletedCount || 0 };
+}
+
 router.delete('/:id', async (req, res) => {
   try {
     const { permanent } = req.query;
@@ -326,14 +332,12 @@ router.delete('/:id', async (req, res) => {
       if (!result) {
         return res.status(404).json({ message: 'Client not found' });
       }
-      const removed = await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
-      // Its referral deals go too; payouts already made to the referrer stay.
-      const deals = await ReferralDeal.deleteMany({ clientId: req.params.id });
+      const { entries, deals } = await purgeClientRecords(req.params.id);
       await activity.record(req, {
         action: 'client.deleted',
         clientId: result.clientId,
         clientName: result.name,
-        meta: { entriesRemoved: removed.deletedCount || 0, referralDealsRemoved: deals.deletedCount || 0 },
+        meta: { entriesRemoved: entries, referralDealsRemoved: deals },
       });
       res.json({ message: 'Client permanently deleted' });
     } else {

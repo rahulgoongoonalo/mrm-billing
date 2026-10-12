@@ -310,15 +310,6 @@ body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg-p
 }
 .royalty-detail-info strong { color: var(--accent-blue); }
 .royalty-detail-info { gap: 16px; flex-wrap: wrap; }
-.month-rate { display: flex; flex-direction: column; gap: 8px; }
-.month-rate-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.month-rate-note { color: var(--text-secondary); font-size: 12px; }
-.month-rate-btn { background: none; border: 1px dashed var(--accent-orange, #f59e0b); color: var(--accent-orange, #f59e0b); border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
-.month-rate-btn:hover { background: rgba(245, 158, 11, 0.08); }
-.month-rate-edit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.month-rate-edit label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.month-rate-input { width: 110px; }
-.month-rate-hint { font-size: 11px; color: var(--text-secondary); }
 
 .royalty-detail-table-wrapper { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border-color); }
 
@@ -1322,7 +1313,13 @@ body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg-p
 .cf-rate-grid .input-group label { text-transform: none; letter-spacing: 0; font-size: 12px; }
 /* The rate a society's commission was worked out at, shown beside its label. */
 .rate-chip { margin-left: 6px; padding: 1px 6px; border-radius: 5px; background: var(--calculated-bg); border: 1px solid var(--calculated-border); color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0; }
-.month-rate-chip { color: var(--accent-orange, #f59e0b); border-color: var(--accent-orange, #f59e0b); }
+.unlocked-chip { color: var(--accent-orange); border-color: var(--accent-orange); font-family: inherit; }
+.commission-lock-btn { margin-left: auto; float: right; background: none; border: 1px dashed var(--accent-orange); color: var(--accent-orange); border-radius: 5px; padding: 0 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; cursor: pointer; text-transform: none; }
+.commission-lock-btn:hover { background: rgba(240, 160, 64, 0.1); }
+.commission-lock-btn.is-unlocked { border-style: solid; }
+.commission-unlocked input { border-color: var(--accent-orange) !important; }
+.unlocked-text { color: var(--accent-orange) !important; }
+.royalty-detail-info .commission-lock-btn { float: none; margin-left: 0; padding: 4px 10px; font-size: 12px; }
 @media (max-width: 720px) { .cf-mode-row { grid-template-columns: 1fr; } }
 .cm-rate-split { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-blue); line-height: 1.5; }
 

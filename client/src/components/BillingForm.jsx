@@ -35,9 +35,10 @@ function BillingForm() {
     calculations,
     isPerSociety,
     rateFor,
-    defaultRateFor,
-    monthRateFor,
-    hasMonthRates,
+    isUnlocked,
+    unlockCommission,
+    lockCommission,
+    setTypedCommission,
     societyAccess,
     carryForwardLocked,
     carryForwardOverride,
@@ -88,18 +89,56 @@ function BillingForm() {
   // one the client actually holds - a single "15%" was misleading.
   const memberList = SOCIETIES
     .filter((s) => societyAccess[s]?.isMember);
-  const rateLabel = (s) => `${s} ${rateFor(s)}%${monthRateFor(s) != null ? ' (this month)' : ''}`;
-  const rateSocieties = memberList.length ? memberList : SOCIETIES.filter((s) => monthRateFor(s) != null);
-  const commissionSubtitle = (isPerSociety || hasMonthRates) && rateSocieties.length
-    ? `Auto-calculated at ${rateSocieties.map(rateLabel).join(', ')}`
-    : `Auto-calculated at ${formData.commissionRate || 0}% commission rate`;
-  // The rate next to each commission: shown when rates differ by society, or
-  // when this month has its own rate for it.
-  const rateChip = (s) => {
-    if (monthRateFor(s) != null) {
-      return <span className="rate-chip month-rate-chip" title={`Client Master rate is ${defaultRateFor(s)}%`}>{rateFor(s)}% this month</span>;
-    }
-    return isPerSociety ? <span className="rate-chip">{rateFor(s)}%</span> : null;
+  const unlockedList = SOCIETIES.filter((s) => isUnlocked(s));
+  const commissionSubtitle = [
+    isPerSociety && memberList.length
+      ? `Auto-calculated at ${memberList.filter((s) => !isUnlocked(s)).map((s) => `${s} ${rateFor(s)}%`).join(', ') || 'client master rates'}`
+      : `Auto-calculated at ${formData.commissionRate || 0}% commission rate`,
+    unlockedList.length ? `typed by hand this month: ${unlockedList.join(', ')}` : '',
+  ].filter(Boolean).join(' \u00b7 ');
+
+  // One society's commission box. Normally calculated and read-only; unlocked,
+  // it is typed by hand for this month only and the calculation leaves it alone.
+  const renderCommission = (society) => {
+    const key = SOCIETY_FIELDS[society].commission;
+    const unlocked = isUnlocked(society);
+    const canUnlock = !isReadOnly && (unlocked || societyAccess[society]?.editable);
+    return (
+      <div className={`input-group ${unlocked ? 'commission-unlocked' : 'calculated'}`} key={society}>
+        <label>
+          {society} Commission
+          {unlocked
+            ? <span className="rate-chip unlocked-chip" title={`Client Master rate is ${rateFor(society)}%`}>typed this month</span>
+            : isPerSociety && <span className="rate-chip">{rateFor(society)}%</span>}
+          {canUnlock && (
+            <button
+              type="button"
+              className={`commission-lock-btn${unlocked ? ' is-unlocked' : ''}`}
+              onClick={() => (unlocked ? lockCommission(society) : unlockCommission(society))}
+              title={unlocked
+                ? `Lock again: back to ${rateFor(society)}% from Client Master`
+                : 'Type this commission by hand for this month only'}
+            >
+              {unlocked ? 'Lock' : 'Unlock'}
+            </button>
+          )}
+        </label>
+        <div className="input-prefix"><span>&#8377;</span>
+          {unlocked && !isReadOnly ? (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.commissionOverrides?.[society] ?? ''}
+              onChange={(e) => setTypedCommission(society, e.target.value)}
+              placeholder="0.00"
+            />
+          ) : (
+            <input type="number" value={(calculations[key] || 0).toFixed(2)} readOnly />
+          )}
+        </div>
+      </div>
+    );
   };
 
   const amountsSubtitle = societyAccess.noProfile
@@ -385,29 +424,7 @@ function BillingForm() {
             </div>
           </div>
           <div className="input-grid">
-            <div className="input-group calculated">
-              <label>IPRS Commission{rateChip('IPRS')}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.iprsCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="input-group calculated">
-              <label>PRS Commission{rateChip('PRS')}</label>
-              <div className="input-prefix"><span>&#8377;</span>
-                <input type="number" value={calculations.prsCommission.toFixed(2)} readOnly />
-              </div>
-            </div>
-            {SINGLE_AMOUNT_SOCIETIES.map((society) => {
-              const key = SOCIETY_FIELDS[society].commission;
-              return (
-                <div className="input-group calculated" key={society}>
-                  <label>{society} Commission{rateChip(society)}</label>
-                  <div className="input-prefix"><span>&#8377;</span>
-                    <input type="number" value={(calculations[key] || 0).toFixed(2)} readOnly />
-                  </div>
-                </div>
-              );
-            })}
+            {['IPRS', 'PRS', ...SINGLE_AMOUNT_SOCIETIES].map(renderCommission)}
             <div className="input-group calculated" style={{ gridColumn: 'span 2' }}>
               <label>Total Commission</label>
               <div className="input-prefix"><span>&#8377;</span>
@@ -670,12 +687,15 @@ function BillingForm() {
         <RoyaltyDetailModal
           title="IPRS"
           entries={formData.iprsEntries || []}
-          commissionRate={defaultRateFor('IPRS')}
-          monthRate={monthRateFor('IPRS')}
+          commissionRate={rateFor('IPRS')}
+          typedCommission={isUnlocked('IPRS') ? calculations.iprsCommission : null}
           isFormReadOnly={isReadOnly}
           fallbackAmount={formData.iprsAmount}
-          onSave={(entries, totalAmount, totalCommission, monthRate) => {
-            updateIprsEntries(entries, totalAmount, monthRate);
+          onSave={(entries, totalAmount, totalCommission, typed) => {
+            updateIprsEntries(entries, totalAmount);
+            // Unlocked in the popup: the lines' typed commissions are the month's.
+            if (typed != null) setTypedCommission('IPRS', typed);
+            else if (isUnlocked('IPRS')) lockCommission('IPRS');
             setIprsModalOpen(false);
           }}
           onClose={() => setIprsModalOpen(false)}
@@ -687,14 +707,17 @@ function BillingForm() {
         <PRSDetailModal
           title="PRS"
           entries={formData.prsEntries || []}
-          commissionRate={defaultRateFor('PRS')}
-          monthRate={monthRateFor('PRS')}
+          commissionRate={rateFor('PRS')}
+          typedCommission={isUnlocked('PRS') ? calculations.prsCommission : null}
           isFormReadOnly={isReadOnly}
           fallbackGbp={formData.prsGbp}
           fallbackRate={formData.gbpToInrRate}
           fallbackAmount={formData.prsAmount}
-          onSave={(entries, totalAmount, totalCommission, monthRate) => {
-            updatePrsEntries(entries, totalAmount, monthRate);
+          onSave={(entries, totalAmount, totalCommission, typed) => {
+            updatePrsEntries(entries, totalAmount);
+            // Unlocked in the popup: the lines' typed commissions are the month's.
+            if (typed != null) setTypedCommission('PRS', typed);
+            else if (isUnlocked('PRS')) lockCommission('PRS');
             setPrsModalOpen(false);
           }}
           onClose={() => setPrsModalOpen(false)}
