@@ -20,16 +20,28 @@ function RemoveClientModal({ onClose }) {
     );
   }, [clients, searchTerm]);
 
+  // Removing a client deletes it for good, with every monthly entry it has, so
+  // a later client given the same ID starts clean. Typing the ID guards
+  // against deleting the wrong row.
   const handleRemove = async (clientId, name) => {
-    if (window.confirm(`Remove ${name} (${clientId})?`)) {
-      setLoading(clientId);
-      try {
-        await removeClient(clientId);
-      } catch (error) {
-        // Error handled in context
-      } finally {
-        setLoading(null);
-      }
+    const typed = window.prompt(
+      `Permanently delete ${name} (${clientId})?\n\n`
+      + 'This removes the client and ALL its monthly entries, receipts and history from the database. '
+      + 'It cannot be undone. Other clients are not affected.\n\n'
+      + `Type ${clientId} to confirm:`
+    );
+    if (typed == null) return;
+    if (typed.trim().toUpperCase() !== String(clientId).toUpperCase()) {
+      window.alert(`The ID did not match ${clientId}. Nothing was deleted.`);
+      return;
+    }
+    setLoading(clientId);
+    try {
+      await removeClient(clientId, true);
+    } catch (error) {
+      // Error handled in context
+    } finally {
+      setLoading(null);
     }
   };
 
@@ -104,7 +116,7 @@ function RemoveClientModal({ onClose }) {
                   onClick={() => handleRemove(client.clientId, client.name)}
                   disabled={loading === client.clientId}
                 >
-                  {loading === client.clientId ? 'Removing...' : 'Remove'}
+                  {loading === client.clientId ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             ))}

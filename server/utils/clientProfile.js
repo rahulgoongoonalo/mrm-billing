@@ -173,8 +173,6 @@ const DEFAULT_COMMISSION_MODE = 'flat';
  * runs against both.
  */
 function societyRate(doc, society) {
-  const override = rateOverrideFor(doc, society);
-  if (override != null) return override;
   const flat = Number(doc && doc.commissionRate) || 0;
   if (!doc || doc.commissionMode !== 'per-society') return flat;
   const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
@@ -186,30 +184,29 @@ function societyRate(doc, society) {
 }
 
 /**
- * A rate set on one month's entry for one society, overriding the client
- * master for that month only. null when the month has none - which is every
- * entry saved before overrides existed, so they recompute exactly as before.
+ * A commission typed by hand for one society in one month ("unlocked"),
+ * replacing the rate calculation for that month only. null when the month
+ * calculates normally - which is every entry saved before this existed.
  */
-function rateOverrideFor(doc, society) {
-  const list = doc && Array.isArray(doc.rateOverrides) ? doc.rateOverrides : [];
-  const hit = list.find((r) => r && r.society === society);
-  if (!hit || hit.rate == null || hit.rate === '') return null;
-  const rate = Number(hit.rate);
-  return Number.isNaN(rate) ? null : rate;
+function commissionOverrideFor(doc, society) {
+  const list = doc && Array.isArray(doc.commissionOverrides) ? doc.commissionOverrides : [];
+  const hit = list.find((o) => o && o.society === society);
+  if (!hit || hit.amount == null || hit.amount === '') return null;
+  const amount = Number(hit.amount);
+  return Number.isNaN(amount) ? null : amount;
 }
 
-/** Keep only well-formed month overrides: known society, once each, 0-100. */
-function cleanRateOverrides(list) {
+/** Keep only well-formed typed commissions: known society, once each, a number >= 0. */
+function cleanCommissionOverrides(list) {
   if (!Array.isArray(list)) return [];
   const seen = new Set();
   return list.reduce((out, row) => {
     const society = row && row.society;
     if (!SOCIETIES.includes(society) || seen.has(society)) return out;
-    if (row.rate == null || row.rate === '') return out;
-    const rate = Number(row.rate);
-    if (Number.isNaN(rate) || rate < 0 || rate > 100) return out;
+    const amount = row.amount === '' || row.amount == null ? 0 : Number(row.amount);
+    if (Number.isNaN(amount) || amount < 0) return out;
     seen.add(society);
-    out.push({ society, rate });
+    out.push({ society, amount: Math.round((amount + Number.EPSILON) * 100) / 100 });
     return out;
   }, []);
 }
@@ -287,8 +284,8 @@ module.exports = {
   COMMISSION_MODES,
   DEFAULT_COMMISSION_MODE,
   societyRate,
-  rateOverrideFor,
-  cleanRateOverrides,
+  commissionOverrideFor,
+  cleanCommissionOverrides,
   missingSocietyRates,
   normalizeSocietyCommissions,
   DEFAULT_CLIENT_TYPE,

@@ -1,51 +1,71 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import MonthRateControl, { monthRateError } from './MonthRateControl';
 
 const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
-const emptyRow = { date: '', emailDate: '', receivedAmount: '', tdsDeduction: '' };
+// A commission typed for the month, shared across the lines in proportion to
+// their amounts (the last line takes the rounding) - the same split the server
+// stores when the commission was typed on the main form.
+const shareOut = (amounts, typed) => {
+  const total = amounts.reduce((t, a) => t + a, 0);
+  let given = 0;
+  return amounts.map((a, i) => {
+    const share = i === amounts.length - 1 ? r(typed - given) : r(total ? typed * (a / total) : 0);
+    given = r(given + share);
+    return share;
+  });
+};
 
-function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, onSave, onClose, isFormReadOnly, fallbackAmount }) {
-  // commissionRate is the client master's rate for this society; monthRate is
-  // this month's own rate for it, or null.
-  const [monthRateInput, setMonthRateInput] = useState(monthRate != null ? String(monthRate) : '');
-  const [rateError, setRateError] = useState('');
+const emptyRow = { commission: '', date: '', emailDate: '', receivedAmount: '', tdsDeduction: '' };
+
+function RoyaltyDetailModal({ title, entries = [], commissionRate, typedCommission, onSave, onClose, isFormReadOnly, fallbackAmount }) {
+  // commissionRate is the client master's rate for this society.
+  // typedCommission is set when this month's commission is unlocked (typed by
+  // hand instead of calculated); each line's commission is then typed here.
+  const typed = typedCommission == null ? null : (parseFloat(typedCommission) || 0);
+  const [unlocked, setUnlocked] = useState(typed != null);
   const [rows, setRows] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (entries.length > 0) {
-      setRows(entries.map(e => ({
+      const loaded = entries.map(e => ({
         date: e.date || '',
         emailDate: e.emailDate || '',
         receivedAmount: e.receivedAmount ?? '',
         tdsDeduction: e.tdsDeduction ?? '',
-      })));
+        commission: e.commission ?? '',
+      }));
+      if (typed != null) {
+        const saved = r(loaded.reduce((t, l) => t + (parseFloat(l.commission) || 0), 0));
+        if (saved !== r(typed)) {
+          const shares = shareOut(entries.map((e) => Number(e.receivedAmount) || 0), typed);
+          loaded.forEach((l, i) => { l.commission = shares[i]; });
+        }
+      }
+      setRows(loaded);
       setIsEditing(false);
     } else if (fallbackAmount && parseFloat(fallbackAmount) > 0) {
       // Pre-populate first row with existing amount from DB
-      setRows([{ date: '', emailDate: '', receivedAmount: fallbackAmount, tdsDeduction: '' }]);
+      setRows([{ date: '', emailDate: '', receivedAmount: fallbackAmount, tdsDeduction: '', commission: typed != null ? typed : '' }]);
       setIsEditing(true);
     } else {
       setRows([{ ...emptyRow }]);
       setIsEditing(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries, fallbackAmount]);
 
-  const effectiveRate = monthRateInput !== '' && !monthRateError(monthRateInput)
-    ? Number(monthRateInput)
-    : (parseFloat(commissionRate) || 0);
-  const rate = effectiveRate / 100;
+  const rate = (parseFloat(commissionRate) || 0) / 100;
 
   const computed = useMemo(() => {
     return rows.map(row => {
       const received = parseFloat(row.receivedAmount) || 0;
       const tds = parseFloat(row.tdsDeduction) || 0;
       const afterTds = r(received - tds);
-      const commission = r(received * rate);
-      return { afterTds, commission };
+      const commission = unlocked ? r(parseFloat(row.commission) || 0) : r(received * rate);
+      return { afterTds, commission, received };
     });
-  }, [rows, rate]);
+  }, [rows, rate, unlocked]);
 
   const totals = useMemo(() => {
     let totalReceived = 0, totalTds = 0, totalAfterTds = 0, totalCommission = 0;
@@ -71,6 +91,14 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, on
     });
   };
 
+  // Unlock: each line's commission becomes typeable, starting from what the
+  // rate gives now. Lock: back to the client master rate.
+  const unlock = () => {
+    setRows((prev) => prev.map((row, i) => ({ ...row, commission: computed[i]?.commission ?? 0 })));
+    setUnlocked(true);
+  };
+  const lock = () => setUnlocked(false);
+
   const addRow = () => {
     setRows(prev => [...prev, { ...emptyRow }]);
   };
@@ -81,8 +109,6 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, on
   };
 
   const handleSave = () => {
-    const err = monthRateError(monthRateInput);
-    if (err) { setRateError(err); return; }
     const data = rows.map((row, i) => ({
       date: row.date,
       emailDate: row.emailDate,
@@ -91,7 +117,7 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, on
       afterTdsAmount: computed[i].afterTds,
       commission: computed[i].commission,
     }));
-    onSave(data, totals.totalReceived, totals.totalCommission, monthRateInput === '' ? null : Number(monthRateInput));
+    onSave(data, totals.totalReceived, totals.totalCommission, unlocked ? totals.totalCommission : null);
     setIsEditing(false);
   };
 
@@ -114,14 +140,18 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, on
 
         <div className="modal-body">
           <div className="royalty-detail-info">
-            <MonthRateControl
-              defaultRate={parseFloat(commissionRate) || 0}
-              value={monthRateInput}
-              onChange={(v) => { setMonthRateInput(v); setRateError(''); }}
-              editable={isEditing && !isFormReadOnly}
-              error={rateError}
-            />
-            <span>Commission is auto-calculated on Received Royalty Amount</span>
+            {unlocked ? (
+              <span>Commission <strong className="unlocked-text">unlocked</strong> for this month &middot; Client Master rate is {parseFloat(commissionRate) || 0}%</span>
+            ) : (
+              <span>Commission Rate: <strong>{parseFloat(commissionRate) || 0}%</strong></span>
+            )}
+            {isEditing && !isFormReadOnly ? (
+              <button type="button" className={`commission-lock-btn${unlocked ? ' is-unlocked' : ''}`} onClick={unlocked ? lock : unlock}>
+                {unlocked ? `Lock (back to ${parseFloat(commissionRate) || 0}%)` : 'Unlock commission for this month'}
+              </button>
+            ) : (
+              <span>{unlocked ? 'Commission typed by hand on each line' : 'Commission is auto-calculated on Received Royalty Amount'}</span>
+            )}
           </div>
 
           <div className="royalty-detail-table-wrapper">
@@ -204,7 +234,22 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, on
                       <span className="detail-value computed">₹ {computed[i]?.afterTds?.toFixed(2) || '0.00'}</span>
                     </td>
                     <td>
-                      <span className="detail-value computed">₹ {computed[i]?.commission?.toFixed(2) || '0.00'}</span>
+                      {isEditing && unlocked ? (
+                        <div className="detail-input-prefix commission-unlocked">
+                          <span>₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={row.commission ?? ''}
+                            onChange={(e) => handleChange(i, 'commission', e.target.value)}
+                            placeholder="0.00"
+                            className="detail-input"
+                            step="0.01"
+                          />
+                        </div>
+                      ) : (
+                        <span className="detail-value computed">₹ {computed[i]?.commission?.toFixed(2) || '0.00'}</span>
+                      )}
                     </td>
                     {isEditing && (
                       <td>

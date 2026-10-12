@@ -33,8 +33,6 @@ export const DEFAULT_COMMISSION_MODE = 'flat';
  * entry saved before per-society rates existed - uses the single commissionRate.
  */
 export function societyRate(doc, society) {
-  const override = rateOverrideFor(doc, society);
-  if (override != null) return override;
   const flat = Number(doc && doc.commissionRate) || 0;
   if (!doc || doc.commissionMode !== 'per-society') return flat;
   const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
@@ -42,18 +40,6 @@ export function societyRate(doc, society) {
   // Falls back to the flat rate rather than zero: the form blocks this case, so
   // reaching here means older data, and charging 0% would be the costlier bug.
   return hit && hit.rate != null && !Number.isNaN(Number(hit.rate)) ? Number(hit.rate) : flat;
-}
-
-/**
- * A rate set on one month's entry for one society, overriding the client
- * master for that month only. null when the month has none.
- */
-export function rateOverrideFor(doc, society) {
-  const list = doc && Array.isArray(doc.rateOverrides) ? doc.rateOverrides : [];
-  const hit = list.find((r) => r && r.society === society);
-  if (!hit || hit.rate == null || hit.rate === '') return null;
-  const rate = Number(hit.rate);
-  return Number.isNaN(rate) ? null : rate;
 }
 
 /** Societies the client has selected but given no rate. Empty unless per-society. */

@@ -16,7 +16,7 @@ router.use(authenticateToken);
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const { SOCIETIES, societyRate, cleanRateOverrides, isBeforeJoining, joiningMonthLabel } = require('../utils/clientProfile');
+const { SOCIETIES, societyRate, commissionOverrideFor, cleanCommissionOverrides, isBeforeJoining, joiningMonthLabel } = require('../utils/clientProfile');
 
 // The refusal for a month before the client joined.
 const lockedBeforeJoining = (client) => `${client.name} (${client.clientId}) joined in ${joiningMonthLabel(client)}. Months before that are locked.`;
@@ -35,6 +35,37 @@ function cleanSocietyDates(list) {
     out.push({ society, receivedDate, emailDate });
     return out;
   }, []);
+}
+
+const round2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+// Each receipt line's share of the society's commission. Normally the line's
+// amount at the society's rate. When the commission was typed by hand for the
+// month, the typed figure is shared out in proportion to the line amounts (the
+// last line takes the rounding), so the lines still add up to what was typed -
+// unless the lines were typed one by one in the popup, which are kept.
+function withLineCommission(rows, key, society, entry) {
+  const list = (rows || []).map((row) => ({ ...row }));
+  const typed = commissionOverrideFor(entry, society);
+  if (typed == null) {
+    const rate = societyRate(entry, society) / 100;
+    return list.map((row) => ({ ...row, commission: round2((Number(row[key]) || 0) * rate) }));
+  }
+  // Lines typed one by one in the popup already add up to the typed figure:
+  // keep them as typed.
+  const typedLines = round2(list.reduce((t, row) => t + (Number(row.commission) || 0), 0));
+  if (list.length && Math.abs(typedLines - typed) < 0.005) {
+    return list.map((row) => ({ ...row, commission: round2(Number(row.commission) || 0) }));
+  }
+  const total = list.reduce((t, row) => t + (Number(row[key]) || 0), 0);
+  let given = 0;
+  return list.map((row, i) => {
+    const share = i === list.length - 1
+      ? round2(typed - given)
+      : round2(total ? typed * ((Number(row[key]) || 0) / total) : 0);
+    given = round2(given + share);
+    return { ...row, commission: share };
+  });
 }
 
 // Helper: get the year for a given month in a financial year
@@ -372,9 +403,9 @@ router.post('/', async (req, res) => {
       societyCommissions: client.commissionMode === 'per-society'
         ? (client.societyCommissions || []).map(({ society, rate }) => ({ society, rate }))
         : [],
-      // The one thing the form may change about the rates: a different rate
-      // for a society in this month only.
-      rateOverrides: cleanRateOverrides(data.rateOverrides),
+      // The one thing the form may change about commission: a society's
+      // commission typed by hand ("unlocked") for this month only.
+      commissionOverrides: cleanCommissionOverrides(data.commissionOverrides),
       gstRate: data.gstRate ?? 18,
       iprsAmount: data.iprsAmount || 0,
       iprsEntries: data.iprsEntries || [],
@@ -406,10 +437,8 @@ router.post('/', async (req, res) => {
     // The commission on each IPRS / PRS receipt line is worked out here at the
     // rate that really applies, rather than trusting the figure the popup sent:
     // the popup used to show the flat rate for a per-society client.
-    const lineCommission = (amount, society) =>
-      Math.round(((Number(amount) || 0) * (societyRate(entryData, society) / 100) + Number.EPSILON) * 100) / 100;
-    entryData.iprsEntries = entryData.iprsEntries.map((row) => ({ ...row, commission: lineCommission(row.receivedAmount, 'IPRS') }));
-    entryData.prsEntries = entryData.prsEntries.map((row) => ({ ...row, commission: lineCommission(row.receivedInr, 'PRS') }));
+    entryData.iprsEntries = withLineCommission(entryData.iprsEntries, 'receivedAmount', 'IPRS', entryData);
+    entryData.prsEntries = withLineCommission(entryData.prsEntries, 'receivedInr', 'PRS', entryData);
 
     const before = await RoyaltyAccounting.findOne({ clientId, month, year }).lean();
 

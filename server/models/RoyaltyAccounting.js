@@ -5,6 +5,7 @@ const {
   COMMISSION_MODES,
   DEFAULT_COMMISSION_MODE,
   societyRate,
+  commissionOverrideFor,
 } = require('../utils/clientProfile');
 
 const royaltyAccountingSchema = new mongoose.Schema({
@@ -36,14 +37,14 @@ const royaltyAccountingSchema = new mongoose.Schema({
     }],
     default: []
   },
-  // A different rate for one society in this month only (e.g. IPRS at 10% when
-  // the client master says 15%). Owned by the entry, not the client, so a
-  // client master rate change never touches it. Empty for almost every entry.
-  rateOverrides: {
+  // Commission typed by hand for one society in this month only ("unlocked"
+  // on the entry form). It replaces the rate calculation for that society in
+  // this month; every other month keeps calculating from the client master.
+  commissionOverrides: {
     type: [{
       _id: false,
       society: { type: String, enum: SOCIETIES, required: true },
-      rate: { type: Number, required: true, min: 0, max: 100 }
+      amount: { type: Number, required: true, min: 0 }
     }],
     default: []
   },
@@ -191,12 +192,13 @@ function computeFields(doc) {
   // Each society is charged at its own rate. In flat mode - and for every entry
   // saved before per-society rates existed, which have no commissionMode at all
   // - societyRate() returns the single commissionRate for all of them, so the
-  // arithmetic is exactly what it was. A month override (rateOverrides) beats
-  // both, for that society and that month only.
+  // arithmetic is exactly what it was. A commission typed by hand for this
+  // month (commissionOverrides) replaces the calculation for that society.
   let totalCommission = 0;
   for (const society of SOCIETIES) {
     const { amount, commission } = SOCIETY_FIELDS[society];
-    const value = r((doc[amount] || 0) * (societyRate(doc, society) / 100));
+    const typed = commissionOverrideFor(doc, society);
+    const value = typed != null ? r(typed) : r((doc[amount] || 0) * (societyRate(doc, society) / 100));
     doc[commission] = value;
     totalCommission += value;
   }
