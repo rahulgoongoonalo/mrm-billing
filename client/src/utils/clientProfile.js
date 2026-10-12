@@ -33,6 +33,8 @@ export const DEFAULT_COMMISSION_MODE = 'flat';
  * entry saved before per-society rates existed - uses the single commissionRate.
  */
 export function societyRate(doc, society) {
+  const override = rateOverrideFor(doc, society);
+  if (override != null) return override;
   const flat = Number(doc && doc.commissionRate) || 0;
   if (!doc || doc.commissionMode !== 'per-society') return flat;
   const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
@@ -40,6 +42,18 @@ export function societyRate(doc, society) {
   // Falls back to the flat rate rather than zero: the form blocks this case, so
   // reaching here means older data, and charging 0% would be the costlier bug.
   return hit && hit.rate != null && !Number.isNaN(Number(hit.rate)) ? Number(hit.rate) : flat;
+}
+
+/**
+ * A rate set on one month's entry for one society, overriding the client
+ * master for that month only. null when the month has none.
+ */
+export function rateOverrideFor(doc, society) {
+  const list = doc && Array.isArray(doc.rateOverrides) ? doc.rateOverrides : [];
+  const hit = list.find((r) => r && r.society === society);
+  if (!hit || hit.rate == null || hit.rate === '') return null;
+  const rate = Number(hit.rate);
+  return Number.isNaN(rate) ? null : rate;
 }
 
 /** Societies the client has selected but given no rate. Empty unless per-society. */
@@ -223,4 +237,48 @@ export function downloadCsv(csv, filename) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Joining date
+// ---------------------------------------------------------------------------
+//
+// A client may carry the date they joined MRM ('YYYY-MM-DD'). Months before
+// the joining month are not part of their record: they cannot be entered, and
+// reports and statements start at the joining month. A client without a
+// joining date is untouched by all of this.
+
+const JOINING_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CAL_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+export const isValidJoiningDate = (v) => {
+  if (!v) return true;
+  if (!JOINING_DATE_RE.test(v)) return false;
+  // Round-trip, so 2026-02-30 (which Date rolls into March) is refused.
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+
+// The joining month on the year*12+month scale entries are ordered by, or null.
+export function joiningOrder(client) {
+  const v = client && client.joiningDate;
+  if (!v || !JOINING_DATE_RE.test(v)) return null;
+  const [y, m] = v.split('-').map(Number);
+  return y * 12 + (m - 1);
+}
+
+// Order of a 'jan'..'dec' month in a calendar year.
+export const monthOrderOf = (month, year) => year * 12 + CAL_MONTHS.indexOf(month);
+
+// True when this month ({ month, year }) falls before the client joined.
+export function isBeforeJoining(client, { month, year }) {
+  const j = joiningOrder(client);
+  return j !== null && monthOrderOf(month, year) < j;
+}
+
+// "September 2026" for the joining month.
+export function joiningMonthLabel(client) {
+  const j = joiningOrder(client);
+  if (j === null) return '';
+  return new Date(Date.UTC(Math.floor(j / 12), j % 12, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }

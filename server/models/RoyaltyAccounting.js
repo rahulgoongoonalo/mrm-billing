@@ -36,6 +36,17 @@ const royaltyAccountingSchema = new mongoose.Schema({
     }],
     default: []
   },
+  // A different rate for one society in this month only (e.g. IPRS at 10% when
+  // the client master says 15%). Owned by the entry, not the client, so a
+  // client master rate change never touches it. Empty for almost every entry.
+  rateOverrides: {
+    type: [{
+      _id: false,
+      society: { type: String, enum: SOCIETIES, required: true },
+      rate: { type: Number, required: true, min: 0, max: 100 }
+    }],
+    default: []
+  },
   gstRate: { type: Number, default: 18 },
 
   // Royalty Amount Inputs (UI Editable)
@@ -180,7 +191,8 @@ function computeFields(doc) {
   // Each society is charged at its own rate. In flat mode - and for every entry
   // saved before per-society rates existed, which have no commissionMode at all
   // - societyRate() returns the single commissionRate for all of them, so the
-  // arithmetic is exactly what it was.
+  // arithmetic is exactly what it was. A month override (rateOverrides) beats
+  // both, for that society and that month only.
   let totalCommission = 0;
   for (const society of SOCIETIES) {
     const { amount, commission } = SOCIETY_FIELDS[society];

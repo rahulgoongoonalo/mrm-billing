@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
+const ReferralDeal = require('../models/ReferralDeal');
 const Settings = require('../models/Settings');
 const { authenticateToken } = require('../middleware/auth');
 const activity = require('../services/activity');
+const { SOCIETIES, SOCIETY_FIELDS, isBeforeJoining, monthOrderOf } = require('../utils/clientProfile');
 
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
@@ -27,7 +29,8 @@ function sendSaveError(res, error, action) {
 
 // Copy the client-master fields present in the request body onto the document.
 function applyProfileFields(client, body) {
-  const { clientType, societies, phone, email, gstId, commissionMode, societyCommissions, paymentAccount } = body;
+  const { clientType, societies, phone, email, gstId, commissionMode, societyCommissions, paymentAccount, joiningDate } = body;
+  if (joiningDate !== undefined) client.joiningDate = joiningDate || '';
   if (clientType !== undefined) client.clientType = clientType;
   if (societies !== undefined) client.societies = Array.isArray(societies) ? societies : [];
   if (phone !== undefined) client.phone = phone;
@@ -38,6 +41,35 @@ function applyProfileFields(client, body) {
   if (societyCommissions !== undefined) {
     client.societyCommissions = Array.isArray(societyCommissions) ? societyCommissions : [];
   }
+}
+
+// Months a joining date would hide that still hold figures. Only empty months
+// (the zero placeholders entered before joining dates existed) may be hidden;
+// anything else means the date is wrong, or the figures belong somewhere.
+const ENTRY_MONEY_FIELDS = [
+  ...SOCIETIES.map((s) => SOCIETY_FIELDS[s].amount),
+  'extraAmount', 'currentMonthGstBase', 'previousOutstandingGstBase',
+  'currentMonthReceipt', 'currentMonthTds', 'previousMonthReceipt', 'previousMonthTds',
+  'previousMonthOutstanding', 'totalOutstanding',
+];
+async function monthsHiddenByJoining(clientId, joiningDate) {
+  if (!joiningDate) return [];
+  const probe = { joiningDate };
+  const entries = await RoyaltyAccounting.find({ clientId }).lean();
+  return entries
+    .filter((e) => isBeforeJoining(probe, e))
+    .filter((e) => ENTRY_MONEY_FIELDS.some((f) => Math.abs(Number(e[f]) || 0) >= 0.01))
+    .sort((a, b) => monthOrderOf(a.month, a.year) - monthOrderOf(b.month, b.year))
+    .map((e) => `${e.month.charAt(0).toUpperCase()}${e.month.slice(1)} ${e.year}`);
+}
+
+// 400 with the months, or null when the date is safe to save.
+async function joiningConflict(res, clientId, joiningDate) {
+  const months = await monthsHiddenByJoining(clientId, joiningDate);
+  if (!months.length) return null;
+  return res.status(400).json({
+    message: `Joining date ${joiningDate} would lock months that already have figures: ${months.join(', ')}. Choose a date on or before ${months[0]}, or clear those months first.`,
+  });
 }
 
 // Protect all client routes
@@ -109,6 +141,7 @@ router.post('/', async (req, res) => {
     if (existingClient) {
       // If client exists but is inactive, reactivate with new data
       if (!existingClient.isActive) {
+        if (req.body.joiningDate && await joiningConflict(res, clientId, req.body.joiningDate)) return;
         const before = activity.clientSnapshot(existingClient);
         existingClient.name = name || existingClient.name;
         if (!sendsProfile && type) existingClient.type = type;
@@ -171,6 +204,9 @@ router.put('/:id', async (req, res) => {
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });
     }
+
+    if (req.body.joiningDate && req.body.joiningDate !== client.joiningDate
+      && await joiningConflict(res, client.clientId, req.body.joiningDate)) return;
 
     const before = activity.clientSnapshot(client);
 
@@ -260,8 +296,9 @@ router.put('/:id', async (req, res) => {
 
         if (i > 0) {
           const prevEntry = entries[i - 1];
-          // Chain only if this entry is the immediate chronological successor.
-          if (chronoKey(entry) === chronoKey(prevEntry) + 1) {
+          // Chain only if this entry is the immediate chronological successor,
+          // and never from a month before joining into the joining month.
+          if (chronoKey(entry) === chronoKey(prevEntry) + 1 && !isBeforeJoining(client, prevEntry)) {
             entry.previousMonthOutstanding = Math.round((prevEntry.totalOutstanding + Number.EPSILON) * 100) / 100;
           }
         }
@@ -290,11 +327,13 @@ router.delete('/:id', async (req, res) => {
         return res.status(404).json({ message: 'Client not found' });
       }
       const removed = await RoyaltyAccounting.deleteMany({ clientId: req.params.id });
+      // Its referral deals go too; payouts already made to the referrer stay.
+      const deals = await ReferralDeal.deleteMany({ clientId: req.params.id });
       await activity.record(req, {
         action: 'client.deleted',
         clientId: result.clientId,
         clientName: result.name,
-        meta: { entriesRemoved: removed.deletedCount || 0 },
+        meta: { entriesRemoved: removed.deletedCount || 0, referralDealsRemoved: deals.deletedCount || 0 },
       });
       res.json({ message: 'Client permanently deleted' });
     } else {

@@ -3,7 +3,7 @@
 // client, either over a trimmed window or the complete record.
 
 const crypto = require('crypto');
-const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
+const { SOCIETIES, SOCIETY_FIELDS, isBeforeJoining } = require('../utils/clientProfile');
 
 const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const monthShort = {
@@ -95,7 +95,8 @@ const COMMISSION_SPLIT = SOCIETIES.map((s) => [SOCIETY_FIELDS[s].commission, s])
 function buildStatement(client, allRows, opts = 'window') {
   const o = typeof opts === 'string' ? { mode: opts } : (opts || {});
   const mode = o.mode || 'window';
-  const rows = [...allRows].sort((a, b) => calOrder(a) - calOrder(b));
+  // A client's record starts at their joining month.
+  const rows = allRows.filter((e) => !isBeforeJoining(client, e)).sort((a, b) => calOrder(a) - calOrder(b));
   if (!rows.length) return null;
 
   let start;

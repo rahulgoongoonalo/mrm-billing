@@ -27,6 +27,8 @@ dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 const mongoose = require('mongoose');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
+const Client = require('../models/Client');
+const { isBeforeJoining } = require('../utils/clientProfile');
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry');
@@ -59,7 +61,13 @@ const r2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
   const dips = [];
   let biggestSwing = { amount: 0 };
 
-  for (const [clientId, rows] of Object.entries(byClient)) {
+  // Months before a client's joining date are not part of the chain: the
+  // joining month opens with the client's own previous balance.
+  const joined = new Map((await Client.find({ joiningDate: { $nin: ['', null] } }).select('clientId joiningDate').lean())
+    .map((c) => [c.clientId, c]));
+
+  for (const [clientId, allRows] of Object.entries(byClient)) {
+    const rows = allRows.filter((e) => !isBeforeJoining(joined.get(clientId), e));
     rows.sort((a, b) => order(a) - order(b));
 
     // Simulate the whole client first, on copies, and see where it lands.

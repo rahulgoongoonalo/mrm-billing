@@ -27,3 +27,6 @@ docs/
 
 # Client-master migration backups (contain client contact details)
 server/backups/
+
+# Weekly reports (contain live client financial data)
+reports/

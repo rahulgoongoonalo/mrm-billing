@@ -16,7 +16,10 @@ router.use(authenticateToken);
 const monthOrder = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const { SOCIETIES } = require('../utils/clientProfile');
+const { SOCIETIES, societyRate, cleanRateOverrides, isBeforeJoining, joiningMonthLabel } = require('../utils/clientProfile');
+
+// The refusal for a month before the client joined.
+const lockedBeforeJoining = (client) => `${client.name} (${client.clientId}) joined in ${joiningMonthLabel(client)}. Months before that are locked.`;
 
 // Keep only known societies with at least one real date, one row each.
 function cleanSocietyDates(list) {
@@ -90,6 +93,18 @@ router.get('/previous-outstanding/:clientId/:month', async (req, res) => {
       : await Settings.getSetting('financialYear');
 
     const currentMonthIndex = monthOrder.indexOf(month);
+
+    // The joining month opens with the client's own previous balance: nothing
+    // before joining carries into it, so the box is left open.
+    const client = await Client.findOne({ clientId }).select('joiningDate').lean();
+    const prevOf = currentMonthIndex === 0
+      ? { month: 'mar', year: fy.startYear }
+      : currentMonthIndex > 0
+        ? { month: monthOrder[currentMonthIndex - 1], year: getYearForMonth(monthOrder[currentMonthIndex - 1], fy) }
+        : null;
+    if (prevOf && isBeforeJoining(client, prevOf)) {
+      return res.json({ totalOutstanding: 0, exists: false, joiningMonth: true });
+    }
 
     // For April (index 0), look at previous FY's March for carry-forward
     if (currentMonthIndex === 0) {
@@ -183,7 +198,7 @@ router.get('/reports/outstanding-summary', async (req, res) => {
     }
 
     const clients = await Client.find({ isActive: { $ne: false } })
-      .select('clientId name type commissionRate paymentAccount createdAt').lean();
+      .select('clientId name type commissionRate paymentAccount createdAt joiningDate').lean();
     const activeIds = new Set(clients.map((c) => c.clientId));
     const entries = (await RoyaltyAccounting.find({}).lean()).filter((e) => activeIds.has(e.clientId));
 
@@ -263,9 +278,14 @@ router.post('/', async (req, res) => {
       : await Settings.getSetting('financialYear');
     const year = getYearForMonth(month, financialYear);
 
+    if (isBeforeJoining(client, { month, year })) {
+      return res.status(400).json({ message: lockedBeforeJoining(client) });
+    }
+
     // Validation: for FY > 2025-2026, ensure previous FY's March entry EXISTS
-    // and is SUBMITTED before allowing entries in the new FY.
-    if (financialYear.startYear > 2025) {
+    // and is SUBMITTED before allowing entries in the new FY. Not needed when
+    // the client joined after that March.
+    if (financialYear.startYear > 2025 && !isBeforeJoining(client, { month: 'mar', year: financialYear.startYear })) {
       const prevFY = { startYear: financialYear.startYear - 1, endYear: financialYear.startYear };
       const prevMarchEntry = await RoyaltyAccounting.findOne({
         clientId,
@@ -288,8 +308,13 @@ router.post('/', async (req, res) => {
 
     // Validation: within a FY, block saving a month until the previous month
     // exists AND is submitted. April is exempt — its predecessor is the
-    // previous FY's March, already validated above.
-    if (currentMonthIndex > 0) {
+    // previous FY's March, already validated above. So is the joining month,
+    // which has no predecessor.
+    const joinsThisMonth = currentMonthIndex > 0 && isBeforeJoining(client, {
+      month: monthOrder[currentMonthIndex - 1],
+      year: getYearForMonth(monthOrder[currentMonthIndex - 1], financialYear),
+    });
+    if (currentMonthIndex > 0 && !joinsThisMonth) {
       const prevMonth = monthOrder[currentMonthIndex - 1];
       const prevYear = getYearForMonth(prevMonth, financialYear);
       const prevEntry = await RoyaltyAccounting.findOne({ clientId, month: prevMonth, year: prevYear });
@@ -324,7 +349,9 @@ router.post('/', async (req, res) => {
     // overrideCarryForward is set only when someone deliberately unlocks the box
     // on the entry form, which is how an opening balance is seeded for a new
     // financial year. Without it the previous month always wins.
-    const prevEntry = await RoyaltyAccounting.findOne(prevLookup);
+    // A month before joining is never carried in: the joining month opens with
+    // the figure entered (the client's previous balance).
+    const prevEntry = isBeforeJoining(client, prevLookup) ? null : await RoyaltyAccounting.findOne(prevLookup);
     const previousMonthOutstanding = (prevEntry && !data.overrideCarryForward)
       ? prevEntry.totalOutstanding
       : (data.previousMonthOutstanding || 0);
@@ -345,6 +372,9 @@ router.post('/', async (req, res) => {
       societyCommissions: client.commissionMode === 'per-society'
         ? (client.societyCommissions || []).map(({ society, rate }) => ({ society, rate }))
         : [],
+      // The one thing the form may change about the rates: a different rate
+      // for a society in this month only.
+      rateOverrides: cleanRateOverrides(data.rateOverrides),
       gstRate: data.gstRate ?? 18,
       iprsAmount: data.iprsAmount || 0,
       iprsEntries: data.iprsEntries || [],
@@ -372,6 +402,14 @@ router.post('/', async (req, res) => {
       lastEditedByEmail: req.user?.email || '',
       lastEditedByUserId: req.user?.userId || ''
     };
+
+    // The commission on each IPRS / PRS receipt line is worked out here at the
+    // rate that really applies, rather than trusting the figure the popup sent:
+    // the popup used to show the flat rate for a per-society client.
+    const lineCommission = (amount, society) =>
+      Math.round(((Number(amount) || 0) * (societyRate(entryData, society) / 100) + Number.EPSILON) * 100) / 100;
+    entryData.iprsEntries = entryData.iprsEntries.map((row) => ({ ...row, commission: lineCommission(row.receivedAmount, 'IPRS') }));
+    entryData.prsEntries = entryData.prsEntries.map((row) => ({ ...row, commission: lineCommission(row.receivedInr, 'PRS') }));
 
     const before = await RoyaltyAccounting.findOne({ clientId, month, year }).lean();
 
@@ -455,6 +493,12 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const before = await RoyaltyAccounting.findById(req.params.id).lean();
+    if (before) {
+      const client = await Client.findOne({ clientId: before.clientId }).lean();
+      if (client && isBeforeJoining(client, before)) {
+        return res.status(400).json({ message: lockedBeforeJoining(client) });
+      }
+    }
     const entry = await RoyaltyAccounting.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -494,6 +538,11 @@ router.delete('/:clientId/:month', async (req, res) => {
       : await Settings.getSetting('financialYear');
 
     const year = getYearForMonth(month, fy);
+
+    const client = await Client.findOne({ clientId }).lean();
+    if (client && isBeforeJoining(client, { month, year })) {
+      return res.status(400).json({ message: lockedBeforeJoining(client) });
+    }
 
     const result = await RoyaltyAccounting.findOneAndDelete({ clientId, month, year });
 

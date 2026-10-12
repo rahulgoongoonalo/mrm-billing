@@ -9,7 +9,7 @@
 const { calOrder, shortLabel, longLabel } = require('./statementBuilder');
 
 // [amount field, short key] per society, derived from the shared map.
-const { SOCIETIES: CLIENT_SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
+const { SOCIETIES: CLIENT_SOCIETIES, SOCIETY_FIELDS, isBeforeJoining } = require('../utils/clientProfile');
 
 const SOCIETIES = CLIENT_SOCIETIES.map((s) => {
   const field = SOCIETY_FIELDS[s].amount;
@@ -61,6 +61,8 @@ function summarise(entries, clients, opts = {}) {
   const byClient = new Map();
   for (const e of entries) {
     if (!master.has(e.clientId)) continue;
+    // A client's record starts at their joining month.
+    if (isBeforeJoining(master.get(e.clientId), e)) continue;
     const order = calOrder(e);
     if (bounds && (order < bounds.from || order > bounds.to)) continue;
     if (!byClient.has(e.clientId)) byClient.set(e.clientId, []);

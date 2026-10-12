@@ -89,6 +89,13 @@ export const NAV_GROUPS = [
         title: 'Whatsapp Report',
         subtitle: 'Short summaries formatted to send to clients',
       },
+      {
+        id: 'referrals',
+        label: 'Referrals',
+        icon: 'share',
+        title: 'Referrals',
+        subtitle: 'Referral earned on referred clients’ payments, and what is still to pay',
+      },
     ],
   },
   {

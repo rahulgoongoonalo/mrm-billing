@@ -35,6 +35,9 @@ function BillingForm() {
     calculations,
     isPerSociety,
     rateFor,
+    defaultRateFor,
+    monthRateFor,
+    hasMonthRates,
     societyAccess,
     carryForwardLocked,
     carryForwardOverride,
@@ -48,6 +51,8 @@ function BillingForm() {
     status,
     isReadOnly,
     enableEdit,
+    beforeJoining,
+    joinedIn,
     updateIprsEntries,
     updatePrsEntries,
   } = useBillingForm();
@@ -83,9 +88,19 @@ function BillingForm() {
   // one the client actually holds - a single "15%" was misleading.
   const memberList = SOCIETIES
     .filter((s) => societyAccess[s]?.isMember);
-  const commissionSubtitle = isPerSociety && memberList.length
-    ? `Auto-calculated at ${memberList.map((s) => `${s} ${rateFor(s)}%`).join(', ')}`
+  const rateLabel = (s) => `${s} ${rateFor(s)}%${monthRateFor(s) != null ? ' (this month)' : ''}`;
+  const rateSocieties = memberList.length ? memberList : SOCIETIES.filter((s) => monthRateFor(s) != null);
+  const commissionSubtitle = (isPerSociety || hasMonthRates) && rateSocieties.length
+    ? `Auto-calculated at ${rateSocieties.map(rateLabel).join(', ')}`
     : `Auto-calculated at ${formData.commissionRate || 0}% commission rate`;
+  // The rate next to each commission: shown when rates differ by society, or
+  // when this month has its own rate for it.
+  const rateChip = (s) => {
+    if (monthRateFor(s) != null) {
+      return <span className="rate-chip month-rate-chip" title={`Client Master rate is ${defaultRateFor(s)}%`}>{rateFor(s)}% this month</span>;
+    }
+    return isPerSociety ? <span className="rate-chip">{rateFor(s)}%</span> : null;
+  };
 
   const amountsSubtitle = societyAccess.noProfile
     ? 'No societies are set for this client, so every box is open. Set them in Client Master to narrow this down.'
@@ -203,7 +218,7 @@ function BillingForm() {
           <span>{selectedClient.clientId} • Commission: {commissionSummary(selectedClient)}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {isReadOnly && (
+          {isReadOnly && !beforeJoining && (
             <button className="btn btn-warning" onClick={enableEdit}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -223,6 +238,19 @@ function BillingForm() {
           </div>
         </div>
       </div>
+
+      {beforeJoining && (
+        <div className="joining-lock" role="status">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>
+            {selectedClient.name} joined in <strong>{joinedIn}</strong>. {monthLabel} is before that, so it is locked.
+            Entries start in {joinedIn}, opening with the client&rsquo;s previous balance.
+          </span>
+        </div>
+      )}
 
       <div className="form-body">
         {/* Configurable Rates Section */}
@@ -358,13 +386,13 @@ function BillingForm() {
           </div>
           <div className="input-grid">
             <div className="input-group calculated">
-              <label>IPRS Commission{isPerSociety && <span className="rate-chip">{rateFor('IPRS')}%</span>}</label>
+              <label>IPRS Commission{rateChip('IPRS')}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.iprsCommission.toFixed(2)} readOnly />
               </div>
             </div>
             <div className="input-group calculated">
-              <label>PRS Commission{isPerSociety && <span className="rate-chip">{rateFor('PRS')}%</span>}</label>
+              <label>PRS Commission{rateChip('PRS')}</label>
               <div className="input-prefix"><span>&#8377;</span>
                 <input type="number" value={calculations.prsCommission.toFixed(2)} readOnly />
               </div>
@@ -373,7 +401,7 @@ function BillingForm() {
               const key = SOCIETY_FIELDS[society].commission;
               return (
                 <div className="input-group calculated" key={society}>
-                  <label>{society} Commission{isPerSociety && <span className="rate-chip">{rateFor(society)}%</span>}</label>
+                  <label>{society} Commission{rateChip(society)}</label>
                   <div className="input-prefix"><span>&#8377;</span>
                     <input type="number" value={(calculations[key] || 0).toFixed(2)} readOnly />
                   </div>
@@ -617,6 +645,10 @@ function BillingForm() {
               Submit Entry
             </button>
           </>
+        ) : beforeJoining ? (
+          <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginRight: 'auto', alignSelf: 'center' }}>
+            Locked &mdash; before {selectedClient.name} joined in {joinedIn}.
+          </span>
         ) : (
           <>
             <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginRight: 'auto', alignSelf: 'center' }}>
@@ -638,11 +670,12 @@ function BillingForm() {
         <RoyaltyDetailModal
           title="IPRS"
           entries={formData.iprsEntries || []}
-          commissionRate={formData.commissionRate}
+          commissionRate={defaultRateFor('IPRS')}
+          monthRate={monthRateFor('IPRS')}
           isFormReadOnly={isReadOnly}
           fallbackAmount={formData.iprsAmount}
-          onSave={(entries, totalAmount, totalCommission) => {
-            updateIprsEntries(entries, totalAmount);
+          onSave={(entries, totalAmount, totalCommission, monthRate) => {
+            updateIprsEntries(entries, totalAmount, monthRate);
             setIprsModalOpen(false);
           }}
           onClose={() => setIprsModalOpen(false)}
@@ -654,13 +687,14 @@ function BillingForm() {
         <PRSDetailModal
           title="PRS"
           entries={formData.prsEntries || []}
-          commissionRate={formData.commissionRate}
+          commissionRate={defaultRateFor('PRS')}
+          monthRate={monthRateFor('PRS')}
           isFormReadOnly={isReadOnly}
           fallbackGbp={formData.prsGbp}
           fallbackRate={formData.gbpToInrRate}
           fallbackAmount={formData.prsAmount}
-          onSave={(entries, totalAmount, totalCommission) => {
-            updatePrsEntries(entries, totalAmount);
+          onSave={(entries, totalAmount, totalCommission, monthRate) => {
+            updatePrsEntries(entries, totalAmount, monthRate);
             setPrsModalOpen(false);
           }}
           onClose={() => setPrsModalOpen(false)}

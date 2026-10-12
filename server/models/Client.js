@@ -11,6 +11,7 @@ const {
   invalidPhones,
   invalidEmails,
   isValidGstId,
+  isValidJoiningDate,
   COMMISSION_MODES,
   DEFAULT_COMMISSION_MODE,
   missingSocietyRates,
@@ -123,6 +124,19 @@ const clientSchema = new mongoose.Schema({
   previousBalance: {
     type: Number,
     default: 0
+  },
+  // When the client joined MRM ('YYYY-MM-DD'). Empty = joined before records
+  // began, and nothing is locked. When set, months before the joining month
+  // cannot be entered, reports and statements start there, and the joining
+  // month opens with previousBalance.
+  joiningDate: {
+    type: String,
+    trim: true,
+    default: '',
+    validate: {
+      validator: isValidJoiningDate,
+      message: (props) => `Invalid joining date "${props.value}" - expected YYYY-MM-DD`
+    }
   },
   iprs: {
     type: Boolean,

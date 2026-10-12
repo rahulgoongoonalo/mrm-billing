@@ -9,6 +9,7 @@ import EntriesPage from './EntriesPage';
 import MailHistoryPage from './MailHistoryPage';
 import ExportPage from './ExportPage';
 import SettingsPage from './SettingsPage';
+import ReferralsPage from './ReferralsPage';
 import ReportsPanel from './ReportsPanel';
 import Toast from './Toast';
 import Modals from './Modals';
@@ -64,6 +65,7 @@ function AppShell() {
           {view === 'mail-history' && <MailHistoryPage />}
           {view === 'export' && <ExportPage />}
           {view === 'settings' && <SettingsPage />}
+          {view === 'referrals' && <ReferralsPage />}
           {REPORT_VIEWS.includes(view) && (
             <ReportsPanel embedded activeReport={view} onNavigate={navigate} />
           )}

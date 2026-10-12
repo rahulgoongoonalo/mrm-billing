@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
-import { SOCIETIES, SOCIETY_FIELDS, societyRate, normalizeSocieties } from '../utils/clientProfile';
+import { SOCIETIES, SOCIETY_FIELDS, societyRate, normalizeSocieties, isBeforeJoining, joiningMonthLabel } from '../utils/clientProfile';
 
 const initialFormState = {
   // Configurable Rates
@@ -27,6 +27,8 @@ const initialFormState = {
   extraAmount: '',
   // { [society]: { receivedDate, emailDate } } for the single-amount societies
   societyDates: {},
+  // { [society]: rate } - a different rate for this month only
+  rateOverrides: {},
 
   // GST & Invoice Inputs
   currentMonthGstBase: '',
@@ -52,6 +54,15 @@ export function useBillingForm() {
   const [carryForwardLocked, setCarryForwardLocked] = useState(false);
   // Set when someone deliberately unlocks the box to seed an opening balance.
   const [carryForwardOverride, setCarryForwardOverride] = useState(false);
+
+  // A month before the client's joining date is locked: it can be looked at,
+  // never entered, edited or deleted (the server refuses it too).
+  const beforeJoining = useMemo(() => {
+    const fy = settings.financialYear;
+    if (!selectedClient || !currentMonth || !fy) return false;
+    const year = ['jan', 'feb', 'mar'].includes(currentMonth) ? fy.endYear : fy.startYear;
+    return isBeforeJoining(selectedClient, { month: currentMonth, year });
+  }, [selectedClient, currentMonth, settings.financialYear]);
 
   // Load entry data when currentEntry, selectedClient, or currentMonth changes
   useEffect(() => {
@@ -80,6 +91,7 @@ export function useBillingForm() {
         mlcAmount: currentEntry.mlcAmount || '',
         imroAmount: currentEntry.imroAmount || '',
         societyDates: Object.fromEntries((currentEntry.societyDates || []).map((d) => [d.society, { receivedDate: d.receivedDate || '', emailDate: d.emailDate || '' }])),
+        rateOverrides: Object.fromEntries((currentEntry.rateOverrides || []).map((o) => [o.society, o.rate])),
         extraAmount: currentEntry.extraAmount || '',
         currentMonthGstBase: currentEntry.currentMonthGstBase || '',
         previousOutstandingGstBase: currentEntry.previousOutstandingGstBase || '',
@@ -127,7 +139,10 @@ export function useBillingForm() {
           .then(res => {
             if (stale) return;
             setCarryForwardLocked(!!res.data.exists);
-            const prevOutstanding = res.data.totalOutstanding;
+            // The joining month opens with the client's previous balance.
+            const prevOutstanding = res.data.joiningMonth
+              ? (Number(selectedClient.previousBalance) || 0)
+              : res.data.totalOutstanding;
             if (prevOutstanding) {
               setFormData(prev => ({ ...prev, previousMonthOutstanding: prevOutstanding }));
             }
@@ -140,28 +155,42 @@ export function useBillingForm() {
 
   // Enable editing for submitted entries
   const enableEdit = useCallback(() => {
-    setIsReadOnly(false);
-  }, []);
+    if (!beforeJoining) setIsReadOnly(false);
+  }, [beforeJoining]);
+
+  // A society's rate for this month only; null goes back to the client master.
+  const withMonthRate = (overrides, society, rate) => {
+    const next = { ...(overrides || {}) };
+    if (rate == null || rate === '') delete next[society];
+    else next[society] = rate;
+    return next;
+  };
 
   // Update IPRS entries from modal
-  const updateIprsEntries = useCallback((entries, totalAmount) => {
+  const updateIprsEntries = useCallback((entries, totalAmount, monthRate) => {
     setFormData(prev => ({
       ...prev,
       iprsEntries: entries,
       iprsAmount: totalAmount,
+      rateOverrides: withMonthRate(prev.rateOverrides, 'IPRS', monthRate),
     }));
     setIsDirty(true);
   }, []);
 
   // Update PRS entries from modal
-  const updatePrsEntries = useCallback((entries, totalAmount) => {
+  const updatePrsEntries = useCallback((entries, totalAmount, monthRate) => {
     setFormData(prev => ({
       ...prev,
       prsEntries: entries,
       prsAmount: totalAmount,
+      rateOverrides: withMonthRate(prev.rateOverrides, 'PRS', monthRate),
     }));
     setIsDirty(true);
   }, []);
+
+  const overrideList = (overrides) => Object.entries(overrides || {})
+    .filter(([, rate]) => rate !== '' && rate != null && !Number.isNaN(Number(rate)))
+    .map(([society, rate]) => ({ society, rate: Number(rate) }));
 
 
   // Round to 2 decimal places (matches backend)
@@ -178,11 +207,13 @@ export function useBillingForm() {
     // Each society is charged at its own rate. The rate structure belongs to the
     // client record, not the form, so it is read from selectedClient. In flat
     // mode societyRate() returns the single commissionRate for every society,
-    // which is what this calculation has always done.
+    // which is what this calculation has always done. A rate set for this month
+    // only (rateOverrides) beats both.
     const rateSource = {
       commissionRate,
       commissionMode: selectedClient?.commissionMode,
       societyCommissions: selectedClient?.societyCommissions,
+      rateOverrides: overrideList(formData.rateOverrides),
     };
 
     const commissions = {};
@@ -330,6 +361,7 @@ export function useBillingForm() {
     societyDates: Object.entries(formData.societyDates || {})
       .map(([society, d]) => ({ society, receivedDate: d.receivedDate || '', emailDate: d.emailDate || '' }))
       .filter((d) => d.receivedDate || d.emailDate),
+    rateOverrides: overrideList(formData.rateOverrides),
     extraAmount: parseFloat(formData.extraAmount) || 0,
     currentMonthGstBase: parseFloat(formData.currentMonthGstBase) || 0,
     previousOutstandingGstBase: parseFloat(formData.previousOutstandingGstBase) || 0,
@@ -413,17 +445,28 @@ export function useBillingForm() {
   // The rate actually applied to each society, so the form can print it next to
   // the commission it produced.
   const isPerSociety = selectedClient?.commissionMode === 'per-society';
-  const rateFor = useCallback((society) => societyRate({
+  // The client master's rate, ignoring any rate set for this month.
+  const defaultRateFor = useCallback((society) => societyRate({
     commissionRate: parseFloat(formData.commissionRate) || 0,
     commissionMode: selectedClient?.commissionMode,
     societyCommissions: selectedClient?.societyCommissions,
   }, society), [formData.commissionRate, selectedClient]);
+  const monthRateFor = useCallback((society) => {
+    const v = formData.rateOverrides?.[society];
+    return v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v);
+  }, [formData.rateOverrides]);
+  const rateFor = useCallback((society) => monthRateFor(society) ?? defaultRateFor(society),
+    [monthRateFor, defaultRateFor]);
+  const hasMonthRates = Object.keys(formData.rateOverrides || {}).some((s) => monthRateFor(s) != null);
 
   return {
     formData,
     calculations,
     isPerSociety,
     rateFor,
+    defaultRateFor,
+    monthRateFor,
+    hasMonthRates,
     societyAccess,
     carryForwardLocked,
     carryForwardOverride,
@@ -437,8 +480,10 @@ export function useBillingForm() {
     handleSubmit,
     handleDelete,
     status: currentEntry?.status || null,
-    isReadOnly,
+    isReadOnly: isReadOnly || beforeJoining,
     enableEdit,
+    beforeJoining,
+    joinedIn: joiningMonthLabel(selectedClient),
     updateIprsEntries,
     updatePrsEntries,
   };
