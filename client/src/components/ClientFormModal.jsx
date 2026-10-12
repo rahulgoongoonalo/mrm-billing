@@ -14,6 +14,8 @@ import {
   normalizeEmail,
   normalizeGstId,
   contactErrors,
+  isValidJoiningDate,
+  joiningMonthLabel,
 } from '../utils/clientProfile';
 
 const OTHER_TYPE = '__other__';
@@ -63,6 +65,7 @@ function ClientFormModal({ client, onClose }) {
     email: client?.email || '',
     gstId: client?.gstId || '',
     paymentAccount: client?.paymentAccount || '',
+    joiningDate: client?.joiningDate || '',
   }));
   const [customType, setCustomType] = useState(false);
   const [touched, setTouched] = useState({});
@@ -129,6 +132,7 @@ function ClientFormModal({ client, onClose }) {
     const gst = parseFloat(form.gstRate);
     if (Number.isNaN(gst) || gst < 0 || gst > 100) e.gstRate = 'Enter a rate between 0 and 100';
     if (form.previousBalance !== '' && Number.isNaN(parseFloat(form.previousBalance))) e.previousBalance = 'Enter an amount';
+    if (!isValidJoiningDate(form.joiningDate)) e.joiningDate = 'Enter a valid date';
     if (form.commissionMode === 'per-society') {
       if (!societies.length) {
         e.societyRates = 'Pick at least one society to set per-society rates';
@@ -167,6 +171,7 @@ function ClientFormModal({ client, onClose }) {
       email: normalizeEmail(form.email),
       gstId: normalizeGstId(form.gstId),
       paymentAccount: form.paymentAccount,
+      joiningDate: form.joiningDate,
     };
     setSaving(true);
     try {
@@ -310,6 +315,17 @@ function ClientFormModal({ client, onClose }) {
                     <span>&#8377;</span>
                     <input id="cf-balance" type="number" value={form.previousBalance} onChange={set('previousBalance')} onBlur={touch('previousBalance')} />
                   </div>
+                </Field>
+                <Field
+                  id="cf-joining"
+                  label="Joining Date"
+                  error={shown('joiningDate')}
+                  hint={form.joiningDate
+                    ? `Entries start in ${joiningMonthLabel(form)}, opening with the previous balance. Earlier months are locked.`
+                    : 'Optional. Leave empty for a client whose record goes back before joining dates were kept.'}
+                  wide
+                >
+                  <input id="cf-joining" type="date" value={form.joiningDate} onChange={set('joiningDate')} onBlur={touch('joiningDate')} />
                 </Field>
               </div>
               <div className="cf-mode-row" role="radiogroup" aria-label="Commission structure">

@@ -71,6 +71,8 @@ function appReducer(state, action) {
       return {
         ...state,
         clients: state.clients.map(c => c.clientId === action.payload.clientId ? action.payload : c),
+        // The open client follows its edits (joining date, rates) without being re-picked.
+        selectedClient: state.selectedClient?.clientId === action.payload.clientId ? action.payload : state.selectedClient,
       };
     case ActionTypes.REMOVE_CLIENT: {
       const removedId = action.payload;

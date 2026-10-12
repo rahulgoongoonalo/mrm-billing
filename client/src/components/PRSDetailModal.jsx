@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import MonthRateControl, { monthRateError } from './MonthRateControl';
 
 const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
+// PRS has no email date. emailDate is still carried through so dates entered
+// before the column was removed are kept, not wiped on the next save.
 const emptyRow = { date: '', emailDate: '', receivedGbp: '', gbpToInrRate: '', receivedInr: '' };
 
-function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, isFormReadOnly, fallbackGbp, fallbackRate, fallbackAmount }) {
+function PRSDetailModal({ title, entries = [], commissionRate, monthRate, onSave, onClose, isFormReadOnly, fallbackGbp, fallbackRate, fallbackAmount }) {
+  // commissionRate is the client master's rate for this society; monthRate is
+  // this month's own rate for it, or null.
+  const [monthRateInput, setMonthRateInput] = useState(monthRate != null ? String(monthRate) : '');
+  const [rateError, setRateError] = useState('');
   const [rows, setRows] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -34,7 +41,10 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
     }
   }, [entries, fallbackGbp, fallbackRate, fallbackAmount]);
 
-  const rate = (parseFloat(commissionRate) || 0) / 100;
+  const effectiveRate = monthRateInput !== '' && !monthRateError(monthRateInput)
+    ? Number(monthRateInput)
+    : (parseFloat(commissionRate) || 0);
+  const rate = effectiveRate / 100;
 
   const computed = useMemo(() => {
     return rows.map(row => {
@@ -89,6 +99,8 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
   };
 
   const handleSave = () => {
+    const err = monthRateError(monthRateInput);
+    if (err) { setRateError(err); return; }
     const data = rows.map((row, i) => ({
       date: row.date,
       emailDate: row.emailDate,
@@ -97,7 +109,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
       receivedInr: computed[i].receivedInr,
       commission: computed[i].commission,
     }));
-    onSave(data, totals.totalInr, totals.totalCommission);
+    onSave(data, totals.totalInr, totals.totalCommission, monthRateInput === '' ? null : Number(monthRateInput));
     setIsEditing(false);
   };
 
@@ -120,7 +132,13 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
 
         <div className="modal-body">
           <div className="royalty-detail-info">
-            <span>Commission Rate: <strong>{commissionRate || 0}%</strong></span>
+            <MonthRateControl
+              defaultRate={parseFloat(commissionRate) || 0}
+              value={monthRateInput}
+              onChange={(v) => { setMonthRateInput(v); setRateError(''); }}
+              editable={isEditing && !isFormReadOnly}
+              error={rateError}
+            />
             <span>Commission is auto-calculated on Received Royalty Amount (INR)</span>
           </div>
 
@@ -130,7 +148,6 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
                 <tr>
                   <th style={{ width: 40 }}>#</th>
                   <th>Date of Royalty Received</th>
-                  <th>Email Received</th>
                   <th>Received Royalty (GBP)</th>
                   <th>GBP to INR Rate</th>
                   <th>Received Royalty Amount (INR)</th>
@@ -152,18 +169,6 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
                         />
                       ) : (
                         <span className="detail-value">{row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-                      )}
-                    </td>
-                    <td>
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          value={row.emailDate}
-                          onChange={(e) => handleChange(i, 'emailDate', e.target.value)}
-                          className="detail-input"
-                        />
-                      ) : (
-                        <span className="detail-value">{row.emailDate ? new Date(row.emailDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                       )}
                     </td>
                     <td>
@@ -237,7 +242,7 @@ function PRSDetailModal({ title, entries = [], commissionRate, onSave, onClose, 
               </tbody>
               <tfoot>
                 <tr className="total-row">
-                  <td colSpan={3}><strong>TOTAL</strong></td>
+                  <td colSpan={2}><strong>TOTAL</strong></td>
                   <td><strong className="computed">£ {totals.totalGbp.toFixed(2)}</strong></td>
                   <td></td>
                   <td><strong className="computed">₹ {totals.totalInr.toFixed(2)}</strong></td>

@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import MonthRateControl, { monthRateError } from './MonthRateControl';
 
 const r = (val) => Math.round((val + Number.EPSILON) * 100) / 100;
 
 const emptyRow = { date: '', emailDate: '', receivedAmount: '', tdsDeduction: '' };
 
-function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClose, isFormReadOnly, fallbackAmount }) {
+function RoyaltyDetailModal({ title, entries = [], commissionRate, monthRate, onSave, onClose, isFormReadOnly, fallbackAmount }) {
+  // commissionRate is the client master's rate for this society; monthRate is
+  // this month's own rate for it, or null.
+  const [monthRateInput, setMonthRateInput] = useState(monthRate != null ? String(monthRate) : '');
+  const [rateError, setRateError] = useState('');
   const [rows, setRows] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -27,7 +32,10 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
     }
   }, [entries, fallbackAmount]);
 
-  const rate = (parseFloat(commissionRate) || 0) / 100;
+  const effectiveRate = monthRateInput !== '' && !monthRateError(monthRateInput)
+    ? Number(monthRateInput)
+    : (parseFloat(commissionRate) || 0);
+  const rate = effectiveRate / 100;
 
   const computed = useMemo(() => {
     return rows.map(row => {
@@ -73,6 +81,8 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
   };
 
   const handleSave = () => {
+    const err = monthRateError(monthRateInput);
+    if (err) { setRateError(err); return; }
     const data = rows.map((row, i) => ({
       date: row.date,
       emailDate: row.emailDate,
@@ -81,7 +91,7 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
       afterTdsAmount: computed[i].afterTds,
       commission: computed[i].commission,
     }));
-    onSave(data, totals.totalReceived, totals.totalCommission);
+    onSave(data, totals.totalReceived, totals.totalCommission, monthRateInput === '' ? null : Number(monthRateInput));
     setIsEditing(false);
   };
 
@@ -104,7 +114,13 @@ function RoyaltyDetailModal({ title, entries = [], commissionRate, onSave, onClo
 
         <div className="modal-body">
           <div className="royalty-detail-info">
-            <span>Commission Rate: <strong>{commissionRate || 0}%</strong></span>
+            <MonthRateControl
+              defaultRate={parseFloat(commissionRate) || 0}
+              value={monthRateInput}
+              onChange={(v) => { setMonthRateInput(v); setRateError(''); }}
+              editable={isEditing && !isFormReadOnly}
+              error={rateError}
+            />
             <span>Commission is auto-calculated on Received Royalty Amount</span>
           </div>
 

@@ -173,6 +173,8 @@ const DEFAULT_COMMISSION_MODE = 'flat';
  * runs against both.
  */
 function societyRate(doc, society) {
+  const override = rateOverrideFor(doc, society);
+  if (override != null) return override;
   const flat = Number(doc && doc.commissionRate) || 0;
   if (!doc || doc.commissionMode !== 'per-society') return flat;
   const list = Array.isArray(doc.societyCommissions) ? doc.societyCommissions : [];
@@ -181,6 +183,35 @@ function societyRate(doc, society) {
   // validation blocks that case, so reaching here means older or imported data,
   // and silently charging 0% commission would be the costlier failure.
   return hit && hit.rate != null && !Number.isNaN(Number(hit.rate)) ? Number(hit.rate) : flat;
+}
+
+/**
+ * A rate set on one month's entry for one society, overriding the client
+ * master for that month only. null when the month has none - which is every
+ * entry saved before overrides existed, so they recompute exactly as before.
+ */
+function rateOverrideFor(doc, society) {
+  const list = doc && Array.isArray(doc.rateOverrides) ? doc.rateOverrides : [];
+  const hit = list.find((r) => r && r.society === society);
+  if (!hit || hit.rate == null || hit.rate === '') return null;
+  const rate = Number(hit.rate);
+  return Number.isNaN(rate) ? null : rate;
+}
+
+/** Keep only well-formed month overrides: known society, once each, 0-100. */
+function cleanRateOverrides(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.reduce((out, row) => {
+    const society = row && row.society;
+    if (!SOCIETIES.includes(society) || seen.has(society)) return out;
+    if (row.rate == null || row.rate === '') return out;
+    const rate = Number(row.rate);
+    if (Number.isNaN(rate) || rate < 0 || rate > 100) return out;
+    seen.add(society);
+    out.push({ society, rate });
+    return out;
+  }, []);
 }
 
 /** Societies the client has selected but given no rate. Empty unless per-society. */
@@ -206,12 +237,58 @@ function normalizeSocietyCommissions(list, societies) {
   }, []);
 }
 
+// ---------------------------------------------------------------------------
+// Joining date
+// ---------------------------------------------------------------------------
+//
+// A client may carry the date they joined MRM ('YYYY-MM-DD'). Months before
+// the joining month are not part of their record: they cannot be entered, and
+// reports and statements start at the joining month. A client without a
+// joining date is untouched by all of this.
+
+const JOINING_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CAL_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+const isValidJoiningDate = (v) => {
+  if (!v) return true;
+  if (!JOINING_DATE_RE.test(v)) return false;
+  // Round-trip, so 2026-02-30 (which Date rolls into March) is refused.
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+
+// The joining month on the year*12+month scale entries are ordered by, or null.
+function joiningOrder(client) {
+  const v = client && client.joiningDate;
+  if (!v || !JOINING_DATE_RE.test(v)) return null;
+  const [y, m] = v.split('-').map(Number);
+  return y * 12 + (m - 1);
+}
+
+// Order of a 'jan'..'dec' month in a calendar year.
+const monthOrderOf = (month, year) => year * 12 + CAL_MONTHS.indexOf(month);
+
+// True when this month ({ month, year }) falls before the client joined.
+function isBeforeJoining(client, { month, year }) {
+  const j = joiningOrder(client);
+  return j !== null && monthOrderOf(month, year) < j;
+}
+
+// "September 2026" for the joining month.
+function joiningMonthLabel(client) {
+  const j = joiningOrder(client);
+  if (j === null) return '';
+  return new Date(Date.UTC(Math.floor(j / 12), j % 12, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 module.exports = {
   SOCIETIES,
   SOCIETY_FIELDS,
   COMMISSION_MODES,
   DEFAULT_COMMISSION_MODE,
   societyRate,
+  rateOverrideFor,
+  cleanRateOverrides,
   missingSocietyRates,
   normalizeSocietyCommissions,
   DEFAULT_CLIENT_TYPE,
@@ -224,4 +301,9 @@ module.exports = {
   invalidPhones,
   invalidEmails,
   isValidGstId,
+  isValidJoiningDate,
+  joiningOrder,
+  monthOrderOf,
+  isBeforeJoining,
+  joiningMonthLabel,
 };

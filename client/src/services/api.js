@@ -153,6 +153,23 @@ export const activityApi = {
   view: (clientId, where) => api.post('/activity/view', { clientId, where }).catch(() => {}),
 };
 
+// Referrals: who brought which client, their share of its payments, payouts.
+export const referralApi = {
+  summary: ({ from, to } = {}) => api.get('/referrals/summary', { params: { ...(from ? { from } : {}), ...(to ? { to } : {}) } }),
+  deals: () => api.get('/referrals/deals'),
+  createDeal: (deal) => api.post('/referrals/deals', deal),
+  updateDeal: (id, deal) => api.put(`/referrals/deals/${id}`, deal),
+  deleteDeal: (id) => api.delete(`/referrals/deals/${id}`),
+  payouts: () => api.get('/referrals/payouts'),
+  changeRate: (id, body) => api.post(`/referrals/deals/${id}/change-rate`, body),
+  preview: (params) => api.get('/referrals/preview', { params }),
+  referrers: () => api.get('/referrals/referrers'),
+  saveReferrer: (key, profile) => api.put(`/referrals/referrers/${encodeURIComponent(key)}`, profile),
+  createPayout: (payout) => api.post('/referrals/payouts', payout),
+  updatePayout: (id, payout) => api.put(`/referrals/payouts/${id}`, payout),
+  deletePayout: (id) => api.delete(`/referrals/payouts/${id}`),
+};
+
 // Settings API
 export const settingsApi = {
   getAll: () => api.get('/settings'),

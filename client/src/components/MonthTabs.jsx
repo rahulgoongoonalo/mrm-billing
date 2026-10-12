@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { isBeforeJoining, joiningMonthLabel } from '../utils/clientProfile';
 
 const MONTHS = [
   { key: 'apr', label: 'April' },
@@ -17,7 +18,10 @@ const MONTHS = [
 ];
 
 function MonthTabs() {
-  const { currentMonth, setCurrentMonth, billingEntries } = useApp();
+  const { currentMonth, setCurrentMonth, billingEntries, selectedClient, settings } = useApp();
+  const fy = settings?.financialYear;
+  // Months before the selected client joined stay clickable (to look) but read as locked.
+  const locked = (key) => !!fy && isBeforeJoining(selectedClient, { month: key, year: ['jan', 'feb', 'mar'].includes(key) ? fy.endYear : fy.startYear });
 
   // Calculate which months have data
   const monthsWithData = useMemo(() => {
@@ -34,8 +38,9 @@ function MonthTabs() {
       {MONTHS.map(month => (
         <button
           key={month.key}
-          className={`month-tab ${currentMonth === month.key ? 'active' : ''} ${monthsWithData.has(month.key) ? 'has-data' : ''}`}
+          className={`month-tab ${currentMonth === month.key ? 'active' : ''} ${monthsWithData.has(month.key) ? 'has-data' : ''}${locked(month.key) ? ' before-joining' : ''}`}
           onClick={() => setCurrentMonth(month.key)}
+          title={locked(month.key) ? `Locked: ${selectedClient.name} joined in ${joiningMonthLabel(selectedClient)}` : undefined}
         >
           {month.label}
           <span className="badge"></span>
