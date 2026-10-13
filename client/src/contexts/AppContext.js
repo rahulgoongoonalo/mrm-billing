@@ -137,26 +137,11 @@ const AppContext = createContext(null);
 
 // Provider component
 
-// The financial year this browser is working in, kept across refreshes until
-// it is changed on screen. Storage can be unavailable (private window, blocked
-// site data); the shared server setting is used then.
-const FY_STORAGE_KEY = 'mrm.financialYear';
-
-function readSavedFinancialYear() {
-  try {
-    const v = parseInt(localStorage.getItem(FY_STORAGE_KEY), 10);
-    return v >= 2000 && v <= 2100 ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveFinancialYear(startYear) {
-  try {
-    localStorage.setItem(FY_STORAGE_KEY, String(startYear));
-  } catch {
-    // Not remembered; the year still switches for this session.
-  }
+// The financial year that is running today (April to March). The app always
+// opens on it; switching years on screen lasts until the next refresh.
+function currentFinancialYear() {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
 export function AppProvider({ children }) {
@@ -182,13 +167,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        // Load settings. The year this browser last picked wins over the shared
-        // server setting, so a refresh never moves someone to another year
-        // because a colleague (or another tab) switched theirs.
+        // Load settings. Every open starts on the running financial year rather
+        // than the shared server setting or a year picked earlier.
         dispatch({ type: ActionTypes.SET_SETTINGS_LOADING, payload: true });
         const settingsRes = await settingsApi.getAll();
-        const savedFy = readSavedFinancialYear();
-        if (savedFy) settingsRes.data.financialYear = { startYear: savedFy, endYear: savedFy + 1 };
+        const fyNow = currentFinancialYear();
+        settingsRes.data.financialYear = { startYear: fyNow, endYear: fyNow + 1 };
         dispatch({ type: ActionTypes.SET_SETTINGS, payload: settingsRes.data });
 
         // Load clients
@@ -366,7 +350,6 @@ export function AppProvider({ children }) {
         type: ActionTypes.UPDATE_SETTING,
         payload: { key: 'financialYear', value: { startYear, endYear: startYear + 1 } },
       });
-      saveFinancialYear(startYear);
       dispatch({ type: ActionTypes.SET_BILLING_ENTRIES, payload: entriesMap });
       if (state.selectedClient) {
         const key = `${state.selectedClient.clientId}_${state.currentMonth}`;
