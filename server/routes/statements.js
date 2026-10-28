@@ -19,8 +19,10 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const inr = (v) => {
-  const neg = v < 0;
-  const [i, d] = Math.abs(v).toFixed(2).split('.');
+  // Display only: amounts print rounded to whole rupees; the figures behind
+  // them keep their paise.
+  const i = String(Math.round(Math.abs(v)));
+  const neg = v < 0 && i !== '0';
   let out = i;
   if (i.length > 3) {
     const last3 = i.slice(-3);
@@ -30,7 +32,7 @@ const inr = (v) => {
     if (rest) g.unshift(rest);
     out = `${g.join(',')},${last3}`;
   }
-  return `${neg ? '-' : ''}${out}.${d}`;
+  return `${neg ? '-' : ''}${out}`;
 };
 
 const STYLE = `
@@ -85,6 +87,9 @@ h1{margin:0;font-size:21px;font-weight:700;color:var(--navy);letter-spacing:-.2p
 .balance .amt.zero{color:var(--green)}
 .balance .amt i,.ctot i{font-style:normal;font-size:.5em;font-weight:600;color:var(--faint);margin-right:3px;letter-spacing:.3px}
 .balance .asat{margin-top:2px;font-size:11px;color:var(--muted)}
+.gstx{font-size:11px;font-style:italic;font-weight:600;color:var(--muted)}
+.balance .gstx{margin-top:2px}
+.led tfoot .lead .gstx{color:rgba(22,32,46,.7)}
 
 /* summary strip */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));border:1px solid var(--line);margin-bottom:10px}
@@ -407,9 +412,9 @@ ${sheet(client.name, client.clientId, `<div class="pick">
 }
 
 function page(st) {
-  // A zero total carries no direction, so it prints as plain 0.00, not +0.00 / −0.00.
-  const signed = (mark, v) => (Math.abs(v) < 0.005 ? inr(0) : `${mark}${inr(v)}`);
-  const sign = (v) => `${v >= 0 ? '+' : '−'}${inr(Math.abs(v))}`;
+  // A total that rounds to zero carries no direction, so it prints as plain 0, not +0 / −0.
+  const signed = (mark, v) => (Math.abs(v) < 0.5 ? inr(0) : v < 0 ? `−${inr(-v)}` : `${mark}${inr(v)}`);
+  const sign = (v) => `${Math.round(v) >= 0 ? '+' : '−'}${inr(Math.abs(v))}`;
   const line = (label, amount, cls = '') => `<li${cls ? ` class="${cls}"` : ''}><span>${esc(label)}</span><b class="${amount >= 0 ? 'up' : 'dn'}">${sign(amount)}</b></li>`;
   const info = (label, amount, cls = 'info') => `<li class="${cls}"><span>${esc(label)}</span><b>${inr(amount)}</b></li>`;
   const cell = (cls, label, body) => (body
@@ -464,6 +469,7 @@ ${sheet(st.clientName, st.clientId, `
     <div class="cap">Closing Balance Payable to MRM</div>
     <span class="amt${Math.abs(st.closing) < 1 ? ' zero' : ''}"><i>Rs.</i> ${inr(st.closing)}</span>
     <div class="asat">as at ${esc(st.periodTo)}</div>
+    <div class="gstx">Amount is exclusive of GST</div>
   </div>
 </section>
 
@@ -506,7 +512,7 @@ ${controls()}
       <td class="blank"></td>
     </tr>
     <tr class="close">
-      <td class="lead" colspan="6"><span>Closing Balance Payable to MRM as at ${esc(st.periodTo)}</span><span class="ctot"><i>Rs.</i> ${inr(st.closing)}</span></td>
+      <td class="lead" colspan="6"><span>Closing Balance Payable to MRM as at ${esc(st.periodTo)} <em class="gstx">(exclusive of GST)</em></span><span class="ctot"><i>Rs.</i> ${inr(st.closing)}</span></td>
     </tr>
   </tfoot>
 </table></div>
