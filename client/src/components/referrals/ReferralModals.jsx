@@ -5,6 +5,7 @@ import Icon from '../Icon';
 import {
   today, thisMonth, addMonths, monthName, dateName, errorOf, money, r2, MODES, dealStatus, initials, hueOf,
 } from './shared';
+import { COMPANY } from '../../company';
 
 // ---- Frame ------------------------------------------------------------------
 
@@ -212,7 +213,7 @@ export function DealModal({ deal, clients, deals, referrers, presetReferrer, onC
   return (
     <Modal
       title={deal ? 'Edit referral deal' : 'New referral deal'}
-      subtitle="The referrer earns a share of every payment this client makes to MRM."
+      subtitle={`The referrer earns a share of every payment this client makes to ${COMPANY.brand}.`}
       onClose={onClose}
       onSubmit={save}
       size="wide"
@@ -480,7 +481,7 @@ export function PayoutModal({ payout, referrer: presetReferrer, referrers, onClo
   return (
     <Modal
       title={payout ? 'Edit payout' : 'Record referral payout'}
-      subtitle="Money MRM paid a referrer against the referral they earned."
+      subtitle={`Money ${COMPANY.brand} paid a referrer against the referral they earned.`}
       onClose={onClose}
       onSubmit={save}
       size="wide"

@@ -4,6 +4,9 @@
 
 const crypto = require('crypto');
 const { SOCIETIES, SOCIETY_FIELDS, isBeforeJoining } = require('../utils/clientProfile');
+const { currentCompanyKey } = require('../config/tenant');
+const { effectivePaymentAccount } = require('../utils/paymentAccounts');
+const { DEFAULT_COMPANY } = require('../config/companies');
 
 const calMonthIdx = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const monthShort = {
@@ -225,7 +228,7 @@ function buildStatement(client, allRows, opts = 'window') {
     gstId: client.gstId || '',
     email: client.email || '',
     phone: client.phone || '',
-    paymentAccount: client.paymentAccount || '',
+    paymentAccount: effectivePaymentAccount(client),
     commissionRate: client.commissionRate,
     gstRate: n(window[0], 'gstRate') || 18,
     mode,
@@ -255,9 +258,14 @@ function orderFromDate(value) {
 }
 
 // Short HMAC so statement links are not enumerable by client id alone.
+// MRM tokens are signed over the client id alone (as they always were, so every
+// link already sent keeps working); other companies sign "<company>:<id>", so a
+// link from one company never opens a statement in another.
 function statementToken(clientId) {
   const secret = process.env.JWT_SECRET || 'mrm-statement-fallback';
-  return crypto.createHmac('sha256', secret).update(String(clientId)).digest('hex').slice(0, 16);
+  const key = currentCompanyKey();
+  const subject = key === DEFAULT_COMPANY ? String(clientId) : `${key}:${clientId}`;
+  return crypto.createHmac('sha256', secret).update(subject).digest('hex').slice(0, 16);
 }
 
 function verifyStatementToken(clientId, token) {
@@ -278,8 +286,11 @@ function serverUrl() {
   return `http://localhost:${process.env.PORT || 5001}`;
 }
 
-const statementUrl = (clientId, mode) =>
-  `${serverUrl()}/statements/${encodeURIComponent(clientId)}/${mode}?t=${statementToken(clientId)}`;
+const statementUrl = (clientId, mode) => {
+  const key = currentCompanyKey();
+  const co = key === DEFAULT_COMPANY ? '' : `&co=${key}`;
+  return `${serverUrl()}/statements/${encodeURIComponent(clientId)}/${mode}?t=${statementToken(clientId)}${co}`;
+};
 
 module.exports = {
   calOrder, shortLabel, longLabel, monthShort, monthLong,

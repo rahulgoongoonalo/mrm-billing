@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { dateName, modeLabel, monthName, today } from './shared';
+import { COMPANY } from '../../company';
 
 // The PDF fonts have no ₹ sign, so amounts there are plain Indian numbers.
 const num = (n) => (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,7 +44,7 @@ export function exportWorkbook({ summary, deals, payouts, periodLabel }) {
     ...payouts.map((p) => [dateName(p.date), p.referrer, p.amount, p.tds || 0, (p.amount || 0) - (p.tds || 0), modeLabel(p.mode), p.reference, p.note, p.createdByEmail]),
   ], [14, 22, 16, 10, 14, 14, 20, 30, 28]), 'Payouts');
 
-  XLSX.writeFile(wb, `MRM_Referrals_${safe(periodLabel)}_${today()}.xlsx`);
+  XLSX.writeFile(wb, `${COMPANY.badge}_Referrals_${safe(periodLabel)}_${today()}.xlsx`);
 }
 
 /** A referrer's statement: every referral earned and every payout, with the balance. */
@@ -56,7 +57,7 @@ export function exportStatement(referrer) {
   doc.text('Referral Statement', 14, 18);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text('Music Rights Management', 14, 25);
+  doc.text(COMPANY.name, 14, 25);
   doc.text(`Issued ${dateName(today())}`, 196, 18, { align: 'right' });
 
   doc.setFont('helvetica', 'bold');

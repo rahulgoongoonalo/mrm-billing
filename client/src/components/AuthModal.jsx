@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { COMPANY } from '../company';
+import CompanySwitcher from './CompanySwitcher';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Icons ────────────────────────────────────────────────────────────────
@@ -230,7 +232,7 @@ const AuthModal = () => {
 
   if (view === 'login') {
     heading = 'Welcome back';
-    subheading = 'Sign in to continue to MRM Billing.';
+    subheading = `Sign in to continue to ${COMPANY.appName}.`;
     body = (
       <form onSubmit={handleLogin} noValidate>
         <Field id="login-email" label="Email" icon={<MailIcon />} inputRef={emailRef}
@@ -332,7 +334,10 @@ const AuthModal = () => {
   return (
     <div className="login-screen">
       <main className={`login-card${shake ? ' login-card--shake' : ''}`}>
-        <img className="login-logo" src={`${process.env.PUBLIC_URL}/mrm-logo.png`} alt="MRM Music Rights Management" />
+        {COMPANY.logo
+          ? <img className="login-logo" src={`${process.env.PUBLIC_URL}/${COMPANY.logo}`} alt={`${COMPANY.brand} ${COMPANY.name}`} />
+          : <div className="login-wordmark" aria-label={COMPANY.name}>{COMPANY.name}</div>}
+        {view === 'login' && <CompanySwitcher variant="login" />}
         <div className="login-card-head">
           <h1>{heading}</h1>
           {subheading && <p>{subheading}</p>}

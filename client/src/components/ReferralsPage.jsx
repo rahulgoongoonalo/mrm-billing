@@ -11,6 +11,7 @@ import { exportWorkbook } from './referrals/referralExport';
 import {
   thisMonth, monthName, dateName, errorOf, money, modeLabel, initials, hueOf, dealStatus, r2,
 } from './referrals/shared';
+import { COMPANY } from '../company';
 
 // Referrals: people who brought a client to MRM earn a share of what that
 // client pays. A deal sets the referrer, the rate and the month it starts;
@@ -256,7 +257,7 @@ function ReferralsPage() {
       {noDeals ? (
         <div className="rf-card rf-onboard">
           <div className="rf-onboard-icon"><Icon name="share" size={26} /></div>
-          <h2>Track who brings clients to MRM</h2>
+          <h2>Track who brings clients to {COMPANY.brand}</h2>
           <p>Add a referral deal and the referrer&rsquo;s share is worked out from every payment that client makes. Record payouts as you pay them, and the balance keeps itself.</p>
           <ol className="rf-steps">
             <li><b>1</b><span><strong>Add a deal</strong>Client, referrer, rate and the month it starts.</span></li>

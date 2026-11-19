@@ -1,4 +1,4 @@
-﻿# MRM Royalty Commission Accounting
+# MRM Royalty Commission Accounting
 
 A full-stack billing and royalty commission management system built for **Music Rights Management (MRM)**. Track client royalties across IPRS, PRS, ISAMRA, ASCAP, SoundExchange, and PPL — with automated commission calculations, GST invoicing, receipt tracking, and outstanding balance management.
 
@@ -113,6 +113,55 @@ mrm-billing/
 ├── vercel.json                 # Vercel deployment config
 └── package.json                # Root package with dev scripts
 ```
+
+---
+
+## Companies (MRM and Kangabeats)
+
+One app serves two companies, **Music Rights Management (MRM)** and **Kangabeats**.
+Both run exactly the same software; each has its own data.
+
+- **Switching**: the brand block at the top of the sidebar (or the toggle on the
+  sign-in screen) switches company. The page reloads into the other company's
+  portal. Each browser tab keeps its own company, so two tabs can show two companies
+  side by side without mixing.
+- **Separate data**: each company has its own MongoDB database on the same cluster.
+  MRM uses the database in `MONGODB_URI` (`mrm_billing`), exactly as before;
+  Kangabeats uses `kangabeats_billing` (override with `KANGABEATS_DB_NAME`).
+  Clients, entries, settings, referrals, activity and mail history are all per company.
+- **Shared logins**: users live in MRM's database, and one account can open either portal.
+- **How it works**: the client sends an `X-Company` header with every API call
+  (`client/src/services/api.js`); `server/config/tenant.js` points the models at that
+  company's database for the request. No header means MRM. Cron jobs and scripts
+  run as MRM.
+- **Statement links**: MRM links are unchanged. Kangabeats links carry `&co=kangabeats`
+  and their own signature, so a link from one company never opens the other's data.
+- **Bank account on statements**: Kangabeats is non-GST, and every Kangabeats client
+  pays into the Kangabeat Entertainment (SBI) account, with no choice offered. MRM keeps
+  each client's own setting; an MRM client with none set pays into the GST (Samraj HDFC)
+  account. Clients are never asked to pick an account. GST on the service fee is
+  charged in both companies, but the Kangabeats statement leaves out the "GST 18%"
+  and "exclusive of GST" notes (`statementGstNotes` in `server/config/companies.js`).
+- **Client mail**: both companies send from the same `accounts@` mailbox
+  (`CLIENT_MAIL_FROM`). Kangabeats mail goes under the sender name "Kangabeats" with its
+  own subject, wording, logo and signature (the `mail` block in
+  `server/config/companies.js`). The scheduled reports (outstanding, team, low royalty)
+  stay MRM-only.
+- **Logos**: `client/public/kangabeats-logo.png` (login screen),
+  `client/public/*-mark.png` (company switcher in the sidebar) and
+  `server/assets/kangabeats-*.png` (statement page, mail). Kangabeats mail carries its
+  logo inside the mail as an inline image (`embedLogo`), so it shows without depending
+  on the web app; MRM mail links its logo from the live web app as before.
+- **Scheduled report mails** (daily outstanding, team daily/weekly, low royalty) cover
+  both companies in one mail; every client row carries a company tag, and the
+  outstanding report adds a "By company" summary.
+- **Moving a client to another company**: `node scripts/moveClientToCompany.js <clientId...> --to kangabeats`
+  (dry run; add `--apply` to move). The client keeps its ID and every entry, activity
+  record and mail history; a backup is written to `server/backups/client-moves/` first,
+  the copy is checked (including the statement) before anything is removed, and its old
+  statement links redirect to the new company. `--restore <backup file> --apply` undoes a move.
+- **Adding or changing a company**: edit `server/config/companies.js` and
+  `client/src/company.js` (keep the keys in step).
 
 ---
 

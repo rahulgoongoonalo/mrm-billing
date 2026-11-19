@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { NAV_GROUPS } from '../navigation';
 import Icon from './Icon';
 import Footer from './Footer';
+import CompanySwitcher from './CompanySwitcher';
 
 function Sidebar({ activeView, onNavigate, open, onClose }) {
   const { settings } = useApp();
@@ -19,11 +20,7 @@ function Sidebar({ activeView, onNavigate, open, onClose }) {
       />
       <aside className={`app-sidebar ${open ? 'open' : ''}`} aria-label="Main navigation">
         <div className="app-sidebar-header">
-          <div className="logo-icon sidebar-logo">MRM</div>
-          <div className="sidebar-brand">
-            <strong>MRM Billing</strong>
-            <span>FY {financialYear.startYear}&ndash;{financialYear.endYear}</span>
-          </div>
+          <CompanySwitcher subtitle={`FY ${financialYear.startYear}–${financialYear.endYear}`} />
           <button className="sidebar-close" onClick={onClose} aria-label="Close navigation">
             <Icon name="close" size={20} />
           </button>

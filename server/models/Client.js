@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 const {
   SOCIETIES,
   DEFAULT_CLIENT_TYPE,
@@ -173,6 +174,13 @@ const clientSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  // Set on a client moved here from another company (scripts/moveClientToCompany.js),
+  // e.g. { company: 'mrm', at: <date> }. Old statement links from that company
+  // are redirected here. Absent on every other client.
+  movedFrom: {
+    company: { type: String },
+    at: { type: Date }
+  },
   updatedAt: {
     type: Date,
     default: Date.now
@@ -255,6 +263,6 @@ clientSchema.methods.getFeePercentage = function() {
   return (this.fee * 100).toFixed(0) + '%';
 };
 
-const Client = mongoose.model('Client', clientSchema);
+const Client = companyModel('Client', clientSchema);
 
 module.exports = Client;

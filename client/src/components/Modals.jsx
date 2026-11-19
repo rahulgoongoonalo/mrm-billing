@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import ClientFormModal from './ClientFormModal';
+import { COMPANY } from '../company';
 
 // Remove Client Modal
 function RemoveClientModal({ onClose }) {
@@ -70,7 +71,7 @@ function RemoveClientModal({ onClose }) {
             </svg>
             <input
               type="text"
-              placeholder="Search by name, MRM ID, type, phone or email..."
+              placeholder={`Search by name, ${COMPANY.idPrefix} ID, type, phone or email...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               autoFocus

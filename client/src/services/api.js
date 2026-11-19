@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { COMPANY } from '../company';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -17,6 +18,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Which company's data this request is about (fixed for the tab).
+    config.headers['X-Company'] = COMPANY.key;
     return config;
   },
   (error) => {

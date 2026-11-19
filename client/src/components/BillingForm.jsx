@@ -4,6 +4,7 @@ import { useBillingForm } from '../hooks/useBillingForm';
 import RoyaltyDetailModal from './RoyaltyDetailModal';
 import PRSDetailModal from './PRSDetailModal';
 import MailWizard from './MailWizard';
+import { COMPANY } from '../company';
 import { SOCIETIES, SOCIETY_FIELDS, commissionSummary } from '../utils/clientProfile';
 
 // Societies entered as one amount (IPRS and PRS have their own receipt lines),
@@ -213,7 +214,8 @@ function BillingForm() {
   const onSubmit = async () => {
     try {
       await handleSubmit();
-      setMailOpen(true);
+      // Client mail only where this company has it set up.
+      if (COMPANY.clientMail) setMailOpen(true);
     } catch (error) {
       if (!error.response) showToast(error.message, 'error');
     }
@@ -671,13 +673,15 @@ function BillingForm() {
             <span style={{ color: 'var(--text-secondary)', fontSize: 14, marginRight: 'auto', alignSelf: 'center' }}>
               This entry has been submitted. Click "Edit Entry" above to make changes.
             </span>
-            <button className="btn btn-primary" onClick={() => setMailOpen(true)}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                <path d="m22 7-10 6L2 7"></path>
-              </svg>
-              Send Mail
-            </button>
+            {COMPANY.clientMail && (
+              <button className="btn btn-primary" onClick={() => setMailOpen(true)}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <path d="m22 7-10 6L2 7"></path>
+                </svg>
+                Send Mail
+              </button>
+            )}
           </>
         )}
       </div>

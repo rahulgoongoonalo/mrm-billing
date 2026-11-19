@@ -8,11 +8,19 @@ const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
-const { buildStatement, verifyStatementToken } = require('../services/statementBuilder');
-const { PAYMENT_ACCOUNTS } = require('../utils/paymentAccounts');
+const { buildStatement, verifyStatementToken, statementToken } = require('../services/statementBuilder');
+const { PAYMENT_ACCOUNTS, effectivePaymentAccount } = require('../utils/paymentAccounts');
+const { COMPANIES, COMPANY_KEYS, DEFAULT_COMPANY } = require('../config/companies');
+const { currentCompany, currentCompanyKey, runWithCompany } = require('../config/tenant');
 
-// Logo inlined so the page renders without a static file route (and in email previews).
-const LOGO_SRC = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '../assets/mrm-logo.png')).toString('base64')}`;
+// Logos inlined so the page renders without a static file route (and in email
+// previews). One per company; the request's company picks which.
+const LOGOS = {};
+for (const [key, c] of Object.entries(COMPANIES)) {
+  if (c.logoFile) {
+    LOGOS[key] = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '../assets', c.logoFile)).toString('base64')}`;
+  }
+}
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -351,14 +359,18 @@ function controls() {
 const ROY = 'Royalties Received by You';
 const ACCOUNTS = { name: 'Pallavi', phone: '+91 90825 63873' };
 const BAL = 'Month-End Balance Payable';
-const FEE = 'MRM Service Fees';
 const INV = 'Invoices &amp; GST';
-const PAY = 'Payments Received by MRM';
+// Wording that names the company ("MRM" for MRM), so each portal's statements
+// carry its own name.
+const BRAND = () => esc(currentCompany().brand);
+const LEGAL = () => esc(currentCompany().legalName);
+// GST notes on the statement ("GST 18%", "exclusive of GST"); a company can turn them off.
+const GST_NOTES = () => currentCompany().statementGstNotes !== false;
 
 // Letterhead, repeated at the top of every printed page.
 function letterhead(name, id) {
   return `<header class="lh">
-  <div class="brand"><img class="logo" src="${LOGO_SRC}" alt="MRM | Music Rights Management"><div><b>Samraj Music Rights Management</b><small>Royalty &amp; Service Fee Statement</small></div></div>
+  <div class="brand">${LOGOS[currentCompanyKey()] ? `<img class="logo" src="${LOGOS[currentCompanyKey()]}" alt="${esc(currentCompany().logoAlt)}"${currentCompany().logoHeight ? ` style="height:${currentCompany().logoHeight}px"` : ''}>` : ''}<div><b>${LEGAL()}</b><small>Royalty &amp; Service Fee Statement</small></div></div>
   <div class="lh-r"><b>Statement of Account</b><span>${esc(name)} &middot; ${esc(id)}</span></div>
 </header>`;
 }
@@ -372,7 +384,7 @@ function sheet(name, id, content, foot = '') {
 <tfoot><tr><td></td></tr></tfoot>
 <tbody><tr><td><div class="body">${content}</div></td></tr></tbody>
 </table>
-<footer class="lf"><span><b>Samraj Music Rights Management</b></span><span>${foot}</span></footer>`;
+<footer class="lf"><span><b>${LEGAL()}</b></span><span>${foot}</span></footer>`;
 }
 
 function bankBlock(key) {
@@ -383,32 +395,6 @@ function bankBlock(key) {
   <div class="bank-h"><b>Bank Account Details</b><span>Please make payments to this account</span></div>
   <dl>${rows}</dl>
 </section>`;
-}
-
-// Shown when the client has no payment account on their profile: pick one for
-// this statement. The choice rides on the link (&pay=) and is not saved - set it
-// on the client's profile to make it stick.
-function choosePage(client, url) {
-  const join = url.includes('?') ? '&' : '?';
-  const cards = Object.entries(PAYMENT_ACCOUNTS).map(([key, a]) => {
-    const get = (k) => (a.rows.find(([label]) => label === k) || [])[1] || '';
-    return `<a class="pick-card" href="${esc(`${url}${join}pay=${key}`)}">
-      <b>${esc(a.label)}</b>
-      <span>${esc(get('Account name'))}</span>
-      <span>${esc(get('Bank name'))} &middot; A/c ${esc(get('Current account no.'))}</span>
-      <em>Generate statement &rarr;</em>
-    </a>`;
-  }).join('');
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
-<title>${esc(client.clientId)} - ${esc(client.name)} - Royalty &amp; Service Fee Statement</title><style>${STYLE}</style></head>
-<body><div class="wrap"><div class="card">
-${sheet(client.name, client.clientId, `<div class="pick">
-  <h2>Select the payment account</h2>
-  <p>This client has no payment account on their profile yet. Choose which bank details the statement should carry.</p>
-  <div class="pick-grid">${cards}</div>
-</div>`)}
-</div></div></body></html>`;
 }
 
 function page(st) {
@@ -440,7 +426,7 @@ function page(st) {
       ? `<small class="adj">incl. carry-forward adj. ${sign(l.adjustment)}</small>`
       : '';
     const middle = fees || invs || pays
-      ? cell('fee', FEE, fees) + cell('inv', INV, invs) + cell('pay', PAY, pays)
+      ? cell('fee', `${BRAND()} Service Fees`, fees) + cell('inv', INV, invs) + cell('pay', `Payments Received by ${BRAND()}`, pays)
       : '<td class="quiet" colspan="3"><span class="none">No transactions recorded</span></td>';
     return `<tr><td class="mo">${esc(l.month)}</td>${roy}${middle}<td class="tot" data-label="${BAL}">${inr(l.total)}${adj}</td></tr>`;
   }).join('');
@@ -462,14 +448,14 @@ ${sheet(st.clientName, st.clientId, `
     <div class="to">Statement for</div>
     <h1>${esc(st.clientName)}</h1>
     <div class="ident">${esc(st.clientType.replace(/\s+[–-]\s+/, ' : '))}</div>
-    <div class="terms">MRM Service Fee Rate: ${esc(st.commissionRate)}% &middot; GST ${esc(st.gstRate)}% &middot; all figures in Rupees</div>
+    <div class="terms">${BRAND()} Service Fee Rate: ${esc(st.commissionRate)}%${GST_NOTES() ? ` &middot; GST ${esc(st.gstRate)}%` : ''} &middot; all figures in Rupees</div>
     ${contact ? `<dl class="contact">${contact}</dl>` : ''}
   </div>
   <div class="balance">
-    <div class="cap">Closing Balance Payable to MRM</div>
+    <div class="cap">Closing Balance Payable to ${BRAND()}</div>
     <span class="amt${Math.abs(st.closing) < 1 ? ' zero' : ''}"><i>Rs.</i> ${inr(st.closing)}</span>
     <div class="asat">as at ${esc(st.periodTo)}</div>
-    <div class="gstx">Amount is exclusive of GST</div>
+    ${GST_NOTES() ? '<div class="gstx">Amount is exclusive of GST</div>' : ''}
   </div>
 </section>
 
@@ -489,9 +475,9 @@ ${controls()}
   <thead><tr>
     <th>Month</th>
     <th class="r">Royalties Received <span class="l2">by You</span><small>for reference</small></th>
-    <th>MRM Service <span class="l2">Fees</span><small>adds to balance</small></th>
+    <th>${BRAND()} Service <span class="l2">Fees</span><small>adds to balance</small></th>
     <th>Invoices <span class="l2">&amp; GST</span><small>only GST adds to balance</small></th>
-    <th>Payments Received <span class="l2">by MRM</span><small>reduces balance</small></th>
+    <th>Payments Received <span class="l2">by ${BRAND()}</span><small>reduces balance</small></th>
     <th class="r">Month-End Balance <span class="l2">Payable</span></th>
   </tr></thead>
   <tbody>
@@ -506,13 +492,13 @@ ${controls()}
     <tr class="sums">
       <td class="mo">Total</td>
       <td class="roy" data-label="${ROY}">${inr(st.royaltyTotal)}</td>
-      <td class="up" data-label="${FEE}">${signed('+', st.feeTotal)}</td>
+      <td class="up" data-label="${BRAND()} Service Fees">${signed('+', st.feeTotal)}</td>
       <td class="up" data-label="GST charged">${signed('+', st.gstTotal)}</td>
-      <td class="dn" data-label="${PAY}">${signed('−', st.paidTotal)}</td>
+      <td class="dn" data-label="Payments Received by ${BRAND()}">${signed('−', st.paidTotal)}</td>
       <td class="blank"></td>
     </tr>
     <tr class="close">
-      <td class="lead" colspan="6"><span>Closing Balance Payable to MRM as at ${esc(st.periodTo)} <em class="gstx">(exclusive of GST)</em></span><span class="ctot"><i>Rs.</i> ${inr(st.closing)}</span></td>
+      <td class="lead" colspan="6"><span>Closing Balance Payable to ${BRAND()} as at ${esc(st.periodTo)}${GST_NOTES() ? ' <em class="gstx">(exclusive of GST)</em>' : ''}</span><span class="ctot"><i>Rs.</i> ${inr(st.closing)}</span></td>
     </tr>
   </tfoot>
 </table></div>
@@ -533,6 +519,25 @@ ${sheet(info.clientName, info.clientId, `<div class="empty"><p>No entries for th
 </div></div></body></html>`;
 }
 
+// The same statement in the company this client was moved to, or null.
+async function movedClientUrl(req, clientId) {
+  const from = currentCompanyKey();
+  for (const key of COMPANY_KEYS) {
+    if (key === from) continue;
+    const found = await runWithCompany(key, () =>
+      Client.exists({ clientId, 'movedFrom.company': from }));
+    if (!found) continue;
+    const query = new URLSearchParams();
+    for (const [k, v] of Object.entries(req.query)) {
+      if (k !== 't' && k !== 'co' && typeof v === 'string') query.set(k, v);
+    }
+    query.set('t', runWithCompany(key, () => statementToken(clientId)));
+    if (key !== DEFAULT_COMPANY) query.set('co', key);
+    return `${req.baseUrl}${req.path}?${query}`;
+  }
+  return null;
+}
+
 async function render(req, res, defaultMode) {
   try {
     const { clientId } = req.params;
@@ -540,16 +545,23 @@ async function render(req, res, defaultMode) {
       return res.status(403).send('<h1>403</h1><p>This statement link is not valid.</p>');
     }
     const client = await Client.findOne({ clientId });
-    if (!client) return res.status(404).send('<h1>404</h1><p>Client not found.</p>');
+    if (!client) {
+      // A client moved to another company keeps its ID; its old links (signed
+      // for this company) go on to its statement there.
+      const moved = await movedClientUrl(req, clientId);
+      if (moved) return res.redirect(302, moved);
+      return res.status(404).send('<h1>404</h1><p>Client not found.</p>');
+    }
 
     const rows = await RoyaltyAccounting.find({ clientId }).lean();
     if (!rows.length) return res.status(404).send('<h1>404</h1><p>No entries recorded for this client yet.</p>');
 
     const { mode, from, to, year, pay } = req.query;
-    const payTo = PAYMENT_ACCOUNTS[pay] ? pay : client.paymentAccount;
-    if (!PAYMENT_ACCOUNTS[payTo]) {
-      return res.set('Content-Type', 'text/html; charset=utf-8').send(choosePage(client, req.originalUrl));
-    }
+    // The company decides the account (Kangabeats: always Without GST). MRM
+    // links may still carry &pay= from the team's own report screen.
+    const payTo = !currentCompany().paymentAccount && PAYMENT_ACCOUNTS[pay]
+      ? pay
+      : effectivePaymentAccount(client);
 
     const wanted = mode === 'period' || mode === 'year' ? mode : defaultMode;
     const st = buildStatement(client, rows, { mode: wanted, from, to, year });

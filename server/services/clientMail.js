@@ -16,21 +16,60 @@
 const fs = require('fs');
 const path = require('path');
 const { SOCIETIES, invalidPhones, invalidEmails, isValidGstId, missingSocietyRates } = require('../utils/clientProfile');
-const { PAYMENT_ACCOUNTS } = require('../utils/paymentAccounts');
+const { PAYMENT_ACCOUNTS, effectivePaymentAccount } = require('../utils/paymentAccounts');
 const { statementUrl, shortLabel } = require('./statementBuilder');
+const { COMPANIES, DEFAULT_COMPANY } = require('../config/companies');
+const { currentCompany, currentCompanyKey } = require('../config/tenant');
 
-const LOGO_FILE = path.join(__dirname, '../assets/mrm-mail-logo.png');
+// Each company's letterhead (logo, signature line, address, website) lives in
+// config/companies.js under `mail`; the request's company picks which.
+const mailBrand = () => currentCompany().mail;
+const brand = () => currentCompany().brand;
+
+const LOGO_FILE = path.join(__dirname, '../assets', COMPANIES[DEFAULT_COMPANY].mail.logoFile);
 // Mail clients strip data: images, so the sent mail must point at a public
 // copy. The live web app already serves the logo, and unlike this server's own
 // address it is reachable even when mail is sent from a local machine (a
-// localhost link shows as a broken image in Gmail). MAIL_LOGO_URL overrides it.
-// The in-app preview inlines the logo so it always shows.
-const LOGO_DATA_URI = `data:image/png;base64,${fs.readFileSync(LOGO_FILE).toString('base64')}`;
-const PUBLIC_LOGO_URL = 'https://billing.musicrightsmanagement.in/Original%20on%20transparent.png';
-const logoUrl = () => process.env.MAIL_LOGO_URL || PUBLIC_LOGO_URL;
+// localhost link shows as a broken image in Gmail). MAIL_LOGO_URL overrides
+// MRM's. The in-app preview inlines the logo so it always shows.
+const LOGO_DATA_URIS = {};
+for (const [key, c] of Object.entries(COMPANIES)) {
+  if (c.mail && c.mail.logoFile) {
+    LOGO_DATA_URIS[key] = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '../assets', c.mail.logoFile)).toString('base64')}`;
+  }
+}
+const logoUrl = () => (currentCompanyKey() === DEFAULT_COMPANY && process.env.MAIL_LOGO_URL) || mailBrand().publicLogoUrl;
 
-const WEBSITE = 'https://www.musicrightsmanagementindia.com';
+// A company whose logo travels inside the mail (mail.embedLogo) attaches it as
+// an inline image and points the signature at it by this content id.
+const LOGO_CID = 'company-logo';
+// Mail History shows a stored copy that links the logo; for a company that
+// embeds its logo, show the built-in copy instead so it never depends on the
+// web app being deployed.
+function historyHtml(html) {
+  const b = mailBrand();
+  if (!b.embedLogo || !html) return html;
+  return html.split(`src="${esc(b.publicLogoUrl)}"`).join(`src="${LOGO_DATA_URIS[currentCompanyKey()]}"`);
+}
+
+function inlineLogo() {
+  const b = mailBrand();
+  if (!b.embedLogo) return null;
+  return { filename: b.logoFile, path: path.join(__dirname, '../assets', b.logoFile), cid: LOGO_CID };
+}
+
 const ACCOUNTS_EMAIL = 'accounts@musicrightsmanagementindia.com';
+
+// The sender: the accounts@ mailbox from CLIENT_MAIL_FROM, under the company's
+// own name where it has one (Kangabeats). MRM's is used exactly as set.
+function mailFrom() {
+  const from = process.env.CLIENT_MAIL_FROM || process.env.EMAIL_FROM || '';
+  const name = mailBrand().fromName;
+  if (!name) return from;
+  const m = /<\s*([^>]+?)\s*>/.exec(from);
+  const address = m ? m[1] : from.trim();
+  return address ? `"${name}" <${address}>` : '';
+}
 
 const SIGNERS = {
   pallavi: {
@@ -39,14 +78,6 @@ const SIGNERS = {
     phone: '+91 90825 63873',
   },
 };
-
-const COMPANY_ADDRESS = [
-  'Samraj Music Rights Management Pvt. Ltd,',
-  'Hotel Samraj Building,',
-  'Near Chevrolet Showroom,',
-  'Chakala Road, Andheri (E)',
-  'Mumbai- 400099',
-];
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -91,22 +122,26 @@ const MAIL_TYPES = {
     label: 'Statement',
     summary: 'Royalty and service fee statement for the period, with the closing balance payable.',
     signer: 'pallavi',
-    subject: (c) => `Your MRM royalty and service fee statement – ${c.name} (${c.clientId})`,
+    // Wording that names the company is read per request (getters), so each
+    // company's mail carries its own name ("MRM" for MRM, as always).
+    subject: (c) => `Your ${brand()} royalty and service fee statement – ${c.name} (${c.clientId})`,
     fields: [
       { key: 'period', label: 'Statement period', kind: 'text', default: (ctx) => [ctx.periodFrom, ctx.periodTo].filter(Boolean).join(' – ') },
       { key: 'royalty', label: 'Royalty received in this period (₹)', kind: 'amount', default: (ctx) => ctx.royaltyTotal },
       { key: 'asAtDate', label: 'Closing balance as at', kind: 'date', default: () => isoDate(new Date()) },
-      { key: 'closing', label: 'Closing balance payable to MRM (₹)', kind: 'amount', default: (ctx) => ctx.closing },
+      { key: 'closing', get label() { return `Closing balance payable to ${brand()} (₹)`; }, kind: 'amount', default: (ctx) => ctx.closing },
     ],
-    body: [
-      'Please find attached your MRM royalty and service fee statement for {period}.',
-      [
-        'Royalty received by you during this period: {royalty}',
-        'Closing balance payable to MRM as at {asAtDate}: {closing}',
-      ],
-      'The statement details the royalties recorded, service fees, GST, payments received and any opening balance carried forward.',
-      'Payment details are included in the statement. For any clarification or payment not reflected, please reply to this email.',
-    ],
+    get body() {
+      return [
+        `Please find attached your ${brand()} royalty and service fee statement for {period}.`,
+        [
+          'Royalty received by you during this period: {royalty}',
+          `Closing balance payable to ${brand()} as at {asAtDate}: {closing}`,
+        ],
+        'The statement details the royalties recorded, service fees, GST, payments received and any opening balance carried forward.',
+        'Payment details are included in the statement. For any clarification or payment not reflected, please reply to this email.',
+      ];
+    },
   },
 };
 
@@ -139,7 +174,7 @@ function checkClient(client, entryCount) {
   const checks = [];
   const add = (key, label, value, ok, hint = '') => checks.push({ key, label, value: value || '', ok, hint });
 
-  add('clientId', 'MRM ID', client.clientId, !!client.clientId);
+  add('clientId', `${currentCompany().shortName} ID`, client.clientId, !!client.clientId);
   add('name', 'Client name', client.name, !!client.name);
 
   const email = String(client.email || '').trim();
@@ -171,7 +206,7 @@ function checkClient(client, entryCount) {
     add('commission', 'Commission rate', rate ? `${rate}%` : '', rate > 0, 'Commission rate is 0%');
   }
 
-  const acct = PAYMENT_ACCOUNTS[client.paymentAccount];
+  const acct = PAYMENT_ACCOUNTS[effectivePaymentAccount(client)];
   add('paymentAccount', 'Payment account', acct ? acct.label : '', !!acct,
     'Choose which bank account the statement should print (With GST / Without GST)');
 
@@ -274,17 +309,18 @@ const P = 'margin:0 0 14px;font-size:14px;line-height:1.65;color:#222;';
 
 function signatureHtml(signer, logoSrc) {
   const s = SIGNERS[signer];
+  const b = mailBrand();
   const contact = `Mobile: <a href="tel:${esc(s.phone.replace(/\s/g, ''))}" style="color:#1a5fb4;text-decoration:none;">${esc(s.phone)}</a>`;
 
   return `
 <p style="${P}margin-top:22px;">Warm regards,</p>
 <p style="margin:0 0 4px;font-size:17px;font-weight:700;color:#111;">${esc(s.name)}</p>
 <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:#333;">${esc(s.title)}</p>
-<p style="margin:0 0 12px;font-size:13px;color:#333;">Music Rights Management &ndash; MRM India</p>
+<p style="margin:0 0 12px;font-size:13px;color:#333;">${esc(b.signatureLine).replace(/–/g, '&ndash;')}</p>
 <p style="margin:0 0 18px;font-size:13px;line-height:1.7;color:#333;">${contact}</p>
-<img src="${esc(logoSrc)}" width="260" height="91" alt="MRM | Music Rights Management" style="display:block;width:260px;max-width:100%;height:auto;border:0;margin:0 0 16px;">
-<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#333;">${COMPANY_ADDRESS.map(esc).join('<br>')}</p>
-<p style="margin:0;font-size:13px;"><a href="${WEBSITE}" style="color:#7b3f99;">${WEBSITE}</a></p>`;
+<img src="${esc(logoSrc)}" width="${b.logoWidth}" height="${b.logoHeight}" alt="${esc(b.logoAlt)}" style="display:block;width:${b.logoWidth}px;max-width:100%;height:auto;border:0;margin:0 0 16px;">
+<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#333;">${b.address.map(esc).join('<br>')}</p>${b.website ? `
+<p style="margin:0;font-size:13px;"><a href="${b.website}" style="color:#7b3f99;">${b.website}</a></p>` : ''}`;
 }
 
 const TH = 'padding:10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#fff;font-family:Arial,Helvetica,sans-serif;';
@@ -326,6 +362,10 @@ function accountTableHtml(client, latest) {
  * Build the mail. `preview` inlines the logo and, in test mode, adds a banner
  * saying where the mail will really go. `latest` is the client's most recent
  * entry, shown as a one-row account table above the signature.
+ *
+ * For a company that embeds its logo, the result also carries `sendHtml` (the
+ * signature pointing at the attached logo) and `inlineAttachments`; `html`
+ * keeps the linked logo and is what Mail History stores.
  */
 function renderMail({ type, client, values, subject, recipients, latest = null, attachmentNames = [], preview = false }) {
   const t = MAIL_TYPES[type];
@@ -342,15 +382,17 @@ function renderMail({ type, client, values, subject, recipients, latest = null, 
   ${recipients.intendedTo.length ? `In live mode it would go to ${esc(recipients.intendedTo.join(', '))}.` : 'No client email is recorded.'}
 </div>` : '';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head>
+  const build = (logoSrc) => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
 <div style="max-width:640px;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#222;">
 ${banner}
 <p style="${P}">Dear ${esc(client.name)},</p>
 ${blocks}
 ${accountTableHtml(client, latest)}
-${signatureHtml(t.signer, preview ? LOGO_DATA_URI : logoUrl())}
+${signatureHtml(t.signer, logoSrc)}
 </div></body></html>`;
+  const html = build(preview ? LOGO_DATA_URIS[currentCompanyKey()] : logoUrl());
+  const inline = preview ? null : inlineLogo();
 
   const signer = SIGNERS[t.signer];
   const text = [
@@ -361,13 +403,19 @@ ${signatureHtml(t.signer, preview ? LOGO_DATA_URI : logoUrl())}
       `Balance build-up: ${statementUrl(client.clientId, 'outstanding')}`,
       `Full record: ${statementUrl(client.clientId, 'full')}`, '',
     ] : []),
-    'Warm regards,', '', signer.name, signer.title, 'Music Rights Management – MRM India', '',
+    'Warm regards,', '', signer.name, signer.title, mailBrand().signatureLine, '',
     `Mobile: ${signer.phone}`, '',
-    ...COMPANY_ADDRESS, '', WEBSITE,
+    ...mailBrand().address, ...(mailBrand().website ? ['', mailBrand().website] : []),
   ].join('\n');
 
   const finalSubject = `${recipients && recipients.isTest ? '[TEST] ' : ''}${(subject || '').trim() || t.subject(client)}`;
-  return { subject: finalSubject, html, text, attachmentNames };
+  return {
+    subject: finalSubject,
+    html,
+    text,
+    attachmentNames,
+    ...(inline ? { sendHtml: build(`cid:${inline.cid}`), inlineAttachments: [inline] } : {}),
+  };
 }
 
 module.exports = {
@@ -376,6 +424,8 @@ module.exports = {
   SIGNERS,
   ACCOUNTS_EMAIL,
   LOGO_FILE,
+  mailFrom,
+  historyHtml,
   describeTypes,
   missingFields,
   checkClient,

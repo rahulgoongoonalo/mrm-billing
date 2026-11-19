@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 
 // A referral deal: someone brought a client to MRM and earns a share of the
 // payments that client makes. Kept apart from the client and the monthly
@@ -25,5 +26,5 @@ const referralDealSchema = new mongoose.Schema({
 referralDealSchema.index({ clientId: 1 });
 referralDealSchema.index({ referrer: 1 });
 
-module.exports = mongoose.model('ReferralDeal', referralDealSchema, 'referralDeals');
+module.exports = companyModel('ReferralDeal', referralDealSchema, 'referralDeals');
 module.exports.MONTH_RE = MONTH_RE;

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 const {
   SOCIETIES,
   SOCIETY_FIELDS,
@@ -302,7 +303,7 @@ royaltyAccountingSchema.statics.cascadeUpdate = async function (clientId, startM
   return updatedEntries;
 };
 
-const RoyaltyAccounting = mongoose.model('RoyaltyAccounting', royaltyAccountingSchema, 'royaltyAccounting');
+const RoyaltyAccounting = companyModel('RoyaltyAccounting', royaltyAccountingSchema, 'royaltyAccounting');
 
 module.exports = RoyaltyAccounting;
 // Pure function over a plain object - exported so scripts can recompute an

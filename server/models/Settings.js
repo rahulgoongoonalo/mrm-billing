@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 
 const settingsSchema = new mongoose.Schema({
   key: {
@@ -74,6 +75,6 @@ settingsSchema.statics.initializeDefaults = async function() {
   }
 };
 
-const Settings = mongoose.model('Settings', settingsSchema);
+const Settings = companyModel('Settings', settingsSchema);
 
 module.exports = Settings;

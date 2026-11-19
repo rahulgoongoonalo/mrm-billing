@@ -53,6 +53,11 @@ const getClientTransporter = () => {
   return clientTransporter;
 };
 
+// Client mail can carry inline images (cid:) only over SMTP; the Brevo
+// fallback cannot, so a mail sent that way links its images instead.
+const clientMailCanEmbedImages = () =>
+  !!(process.env.CLIENT_SMTP_USER && process.env.CLIENT_SMTP_PASS) || !process.env.BREVO_API_KEY;
+
 // "MRM Billing <a@b.com>" -> { name: 'MRM Billing', email: 'a@b.com' }
 function parseSender(from) {
   const m = /^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/.exec(from || '');
@@ -158,6 +163,7 @@ module.exports = {
   getTransporter,
   brevoSendMail,
   getClientTransporter,
+  clientMailCanEmbedImages,
   sendVerificationEmail,
   sendPasswordResetEmail
 };

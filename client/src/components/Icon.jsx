@@ -183,6 +183,8 @@ const PATHS = {
     </>
   ),
   stop: <rect x="5" y="5" width="14" height="14" rx="2" ry="2"></rect>,
+  chevronDown: <polyline points="6 9 12 15 18 9"></polyline>,
+  check: <polyline points="20 6 9 17 4 12"></polyline>,
   wallet: (
     <>
       <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path>

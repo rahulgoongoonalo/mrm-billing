@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { clientMailApi } from '../services/api';
 import { MONTH_LABELS, formatCurrency, formatDateTime } from '../utils/format';
 import Icon from './Icon';
+import { COMPANY } from '../company';
 
 // Mail History: a sent-mail box. The list on the left is every mail sent to a
 // client, newest first; the reader on the right shows the selected mail as the
@@ -121,10 +122,10 @@ function Reader({ mail, onBack }) {
       </header>
 
       <div className="mh-envelope">
-        <div className="mh-avatar" aria-hidden="true">MRM</div>
+        <div className="mh-avatar" aria-hidden="true">{COMPANY.badge}</div>
         <div className="mh-env-main">
           <div className="mh-from">
-            <b>{from.name || 'MRM'}</b>
+            <b>{from.name || COMPANY.brand}</b>
             {from.email && <span>&lt;{from.email}&gt;</span>}
           </div>
           <div className="mh-env-line"><span>to</span> {mail.to || '—'}</div>

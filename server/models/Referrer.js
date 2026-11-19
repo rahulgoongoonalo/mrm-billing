@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 
 // A referrer's profile: how to reach and pay them. Deals and payouts name the
 // referrer as text; `key` is that name tidied and lower-cased, so a profile
@@ -20,4 +21,4 @@ const referrerSchema = new mongoose.Schema({
   updatedByEmail: { type: String, default: '' },
 }, { timestamps: true, versionKey: false });
 
-module.exports = mongoose.model('Referrer', referrerSchema, 'referrers');
+module.exports = companyModel('Referrer', referrerSchema, 'referrers');

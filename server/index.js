@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const connectDB = require('./config/db');
+const { companyMiddleware, runWithCompany } = require('./config/tenant');
+const { COMPANIES, COMPANY_KEYS } = require('./config/companies');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -45,6 +47,18 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Every API request runs as one company (X-Company header; MRM when absent).
+app.use('/api', companyMiddleware);
+
+// The companies a signed-in user can switch between.
+app.get('/api/companies', (req, res) => {
+  res.json(COMPANY_KEYS.map((key) => ({
+    key,
+    name: COMPANIES[key].name,
+    shortName: COMPANIES[key].shortName,
+  })));
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
@@ -61,7 +75,7 @@ app.get('/mail-assets/mrm-logo.png', (req, res) => {
 });
 
 // Public statement pages linked from the outstanding email (HMAC-guarded, no JWT)
-app.use('/statements', statementRoutes);
+app.use('/statements', companyMiddleware, statementRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -74,6 +88,11 @@ app.get('/api/health', (req, res) => {
 
 // Manual trigger for outstanding notification email (for testing)
 app.post('/api/trigger-outstanding-email', async (req, res) => {
+  // The outstanding mail goes to MRM's recipients - never send another
+  // company's figures to them.
+  if (!req.company.scheduledMail) {
+    return res.status(403).json({ success: false, message: `Scheduled mail is not set up for ${req.company.name}.` });
+  }
   try {
     await sendOutstandingNotification();
     res.json({ success: true, message: 'Outstanding notification email sent' });
@@ -85,7 +104,10 @@ app.post('/api/trigger-outstanding-email', async (req, res) => {
 // Initialize default settings on startup
 const initializeApp = async () => {
   try {
-    await Settings.initializeDefaults();
+    // Every company gets its own default settings (FY, rates, ...).
+    for (const key of COMPANY_KEYS) {
+      await runWithCompany(key, () => Settings.initializeDefaults());
+    }
     console.log('Default settings initialized');
   } catch (error) {
     console.error('Error initializing settings:', error);
