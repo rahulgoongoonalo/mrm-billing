@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 
 // Money MRM paid a referrer against the referral they have earned.
 // `amount` is the gross settled against what they earned; `tds` is the part
@@ -19,5 +20,5 @@ const referralPayoutSchema = new mongoose.Schema({
 
 referralPayoutSchema.index({ referrer: 1, date: -1 });
 
-module.exports = mongoose.model('ReferralPayout', referralPayoutSchema, 'referralPayouts');
+module.exports = companyModel('ReferralPayout', referralPayoutSchema, 'referralPayouts');
 module.exports.MODES = MODES;

@@ -2,6 +2,7 @@
 
 const { statementUrl } = require('./statementBuilder');
 const { version: APP_VERSION } = require('../package.json');
+const { REPORT_COMPANIES, companyTag } = require('./companyReport');
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -27,12 +28,12 @@ function table(rows) {
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:11.5px;color:#a6adba;">${i + 1}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:12.5px;line-height:1.4;">
         <div style="font-weight:600;color:#1F3864;">${esc(r.clientName)}</div>
-        <div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#2E6DA4;margin-top:2px;">${esc(r.clientId)}${r.clientType ? ` &middot; <span style="font-family:inherit;color:#a6adba;">${esc(r.clientType)}</span>` : ''}</div>
+        <div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#2E6DA4;margin-top:2px;">${esc(r.clientId)}${r.company ? companyTag(r.company) : ''}${r.clientType ? ` &middot; <span style="font-family:inherit;color:#a6adba;">${esc(r.clientType)}</span>` : ''}</div>
       </td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;font-size:12px;color:#8a93a3;white-space:nowrap;">${r.hasEntries ? r.months : '<span style="color:#B0611A;">no entries</span>'}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;font-size:13px;font-weight:700;color:${r.totalRoyalty > 0 ? '#2E6DA4' : '#a6adba'};white-space:nowrap;">${formatNumber(r.totalRoyalty)}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;">
-        <a href="${esc(statementUrl(r.clientId, 'full'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;">Full record</a>
+        <a href="${esc(r.link || statementUrl(r.clientId, 'full'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;">Full record</a>
       </td>
     </tr>`).join('');
 
@@ -76,7 +77,7 @@ function buildLowRoyaltyMailHtml({ report, isTest, now = new Date() }) {
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:900px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.09),0 10px 32px rgba(16,24,40,.06);">
   ${testBanner}
   <tr><td style="padding:24px 26px 18px;border-bottom:1px solid #e6eaf0;">
-    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8a93a3;font-weight:600;">Music Rights Management</div>
+    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8a93a3;font-weight:600;">${report.allTime.concat(report.lastYear).some((r) => r.company) ? REPORT_COMPANIES : 'Music Rights Management'}</div>
     <div style="font-size:22px;font-weight:700;color:#1F3864;margin-top:3px;letter-spacing:-.3px;">Low Royalty Report</div>
     <div style="font-size:12.5px;color:#5a6474;margin-top:3px;">${esc(dateStr)} &mdash; clients whose royalty receipts add up to ${limit} or less.</div>
   </td></tr>

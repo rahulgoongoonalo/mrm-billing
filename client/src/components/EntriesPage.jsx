@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { MONTH_LABELS, formatDateTime } from '../utils/format';
 import { SOCIETIES, SOCIETY_FIELDS } from '../utils/clientProfile';
 import Icon from './Icon';
+import { COMPANY } from '../company';
 
 // All Entries: who did what, to which client, and when - one page.
 //
@@ -765,7 +766,7 @@ function EntriesPage() {
           <Icon name="search" size={16} />
           <input
             type="search"
-            placeholder="Search client, MRM ID or account"
+            placeholder={`Search client, ${COMPANY.idPrefix} ID or account`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search the timeline"

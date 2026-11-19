@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { excludeInactive } = require('../services/activeClients');
 const { summarise } = require('../services/outstandingSummary');
 const { statementUrl, statementToken, serverUrl } = require('../services/statementBuilder');
+const { effectivePaymentAccount } = require('../utils/paymentAccounts');
 const { newClientsThisMonth } = require('../services/outstandingMail');
 const activity = require('../services/activity');
 
@@ -237,7 +238,7 @@ router.get('/reports/outstanding-summary', async (req, res) => {
 
     // Statement links are HMAC-signed, so only the server can build them.
     const base = serverUrl();
-    const payTo = new Map(clients.map((c) => [c.clientId, c.paymentAccount || '']));
+    const payTo = new Map(clients.map((c) => [c.clientId, effectivePaymentAccount(c)]));
     summary.rows = summary.rows.map((r) => ({
       ...r,
       paymentAccount: payTo.get(r.clientId) || '',

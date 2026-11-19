@@ -13,11 +13,12 @@ const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const { authenticateToken } = require('../middleware/auth');
 const activity = require('../services/activity');
-const { getClientTransporter } = require('../services/emailService');
+const { getClientTransporter, clientMailCanEmbedImages } = require('../services/emailService');
 const { buildStatement, calOrder, statementUrl } = require('../services/statementBuilder');
+const { effectivePaymentAccount } = require('../utils/paymentAccounts');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 const {
-  MAIL_TYPES, DEFAULT_TYPE, ACCOUNTS_EMAIL, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
+  MAIL_TYPES, DEFAULT_TYPE, ACCOUNTS_EMAIL, mailFrom, historyHtml, describeTypes, missingFields, checkClient, mailContext, resolveRecipients, renderMail,
 } = require('../services/clientMail');
 
 router.use(authenticateToken);
@@ -117,7 +118,7 @@ router.get('/history/:entryId/:index', async (req, res) => {
     const entry = await RoyaltyAccounting.findById(req.params.entryId, { mailLog: 1 }).lean().catch(() => null);
     const line = entry?.mailLog?.[parseInt(req.params.index, 10)];
     if (!line) return res.status(404).json({ message: 'Mail not found.' });
-    res.json({ html: line.html || '' });
+    res.json({ html: historyHtml(line.html || '') });
   } catch (err) {
     sendError(res, err);
   }
@@ -144,7 +145,7 @@ router.get('/:clientId/check', async (req, res) => {
     res.json({
       client: {
         clientId: client.clientId, name: client.name, email: client.email, phone: client.phone,
-        gstId: client.gstId, type: client.type, paymentAccount: client.paymentAccount,
+        gstId: client.gstId, type: client.type, paymentAccount: effectivePaymentAccount(client),
       },
       checks,
       ready,
@@ -179,12 +180,24 @@ router.post('/:clientId/preview', async (req, res) => {
 });
 
 // @route POST /api/client-mail/:clientId/send
-router.post('/:clientId/send', async (req, res) => {
+// Client mail goes out under one company's name, sender and letterhead, so it
+// is only allowed for companies set up for it (see config/companies.js).
+const requireClientMail = (req, res, next) => {
+  if (req.company && !req.company.clientMail) {
+    return res.status(403).json({
+      message: `Client mail is not set up for ${req.company.name} yet.`,
+    });
+  }
+  next();
+};
+
+router.post('/:clientId/send', requireClientMail, async (req, res) => {
   try {
     const { client, rows, recipients, mail, type } = await compose(req, { preview: false });
     if (recipients.blocked) return res.status(400).json({ message: recipients.blocked });
 
-    const from = process.env.CLIENT_MAIL_FROM || process.env.EMAIL_FROM || '';
+    // Same accounts@ mailbox for every company, under the company's own name.
+    const from = mailFrom();
     const logLine = {
       sentAt: new Date(),
       from,
@@ -198,6 +211,10 @@ router.post('/:clientId/send', async (req, res) => {
       byEmail: req.user?.email || '',
     };
 
+    // A company that embeds its logo sends the copy pointing at the attached
+    // image, where the mail service allows it; otherwise the linked one.
+    const embed = mail.sendHtml && clientMailCanEmbedImages();
+
     try {
       await getClientTransporter().sendMail({
         // Client mail has its own sender (the accounts address); the internal
@@ -207,8 +224,9 @@ router.post('/:clientId/send', async (req, res) => {
         cc: recipients.cc.join(', '),
         replyTo: ACCOUNTS_EMAIL,
         subject: mail.subject,
-        html: mail.html,
+        html: embed ? mail.sendHtml : mail.html,
         text: mail.text,
+        ...(embed ? { attachments: mail.inlineAttachments } : {}),
       });
       logLine.ok = true;
     } catch (error) {

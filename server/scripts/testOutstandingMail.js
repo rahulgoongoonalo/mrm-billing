@@ -12,9 +12,10 @@ dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const mongoose = require('mongoose');
 const { getTransporter } = require('../services/emailService');
-const { collectOutstanding } = require('../services/outstandingNotification');
+const { collectOutstandingAll } = require('../services/outstandingNotification');
 const { buildOutstandingMailHtml, formatCurrency } = require('../services/outstandingMail');
 const { serverUrl } = require('../services/statementBuilder');
+const { REPORT_SUBJECT_BRANDS } = require('../services/companyReport');
 
 const TEST_RECIPIENT = process.argv[2] || 'rahul.goongoonalo@gmail.com';
 
@@ -24,7 +25,7 @@ async function run() {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected.');
 
-    const { entries, rows, newClients, totalReceivable, owing } = await collectOutstanding();
+    const { entries, rows, newClients, totalReceivable, owing, companies } = await collectOutstandingAll();
     console.log(`Entries: ${entries.length} | clients with a balance row: ${rows.length}`);
     console.log(`Owing: ${owing} | total receivable: ${formatCurrency(totalReceivable)}`);
     console.log(`New clients this month: ${newClients.length}`);
@@ -33,14 +34,14 @@ async function run() {
       console.log(`Top 3: ${rows.slice(0, 3).map((r) => `${r.clientId} ${formatCurrency(r.outstanding)}`).join(' | ')}`);
     }
 
-    const html = buildOutstandingMailHtml({ rows, newClients, isTest: true });
+    const html = buildOutstandingMailHtml({ rows, newClients, companies, isTest: true });
     const dateStr = new Date().toLocaleDateString('en-IN');
 
     console.log(`Sending to ${TEST_RECIPIENT}...`);
     await getTransporter().sendMail({
       from: process.env.EMAIL_FROM,
       to: TEST_RECIPIENT,
-      subject: `[TEST] MRM Outstanding Report - ${dateStr} (${owing} of ${rows.length} clients owing | ${formatCurrency(totalReceivable)})`,
+      subject: `[TEST] ${REPORT_SUBJECT_BRANDS} Outstanding Report - ${dateStr} (${owing} of ${rows.length} clients owing | ${formatCurrency(totalReceivable)})`,
       html,
     });
     console.log('Test email sent.');

@@ -10,7 +10,8 @@ dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const mongoose = require('mongoose');
 const { getTransporter } = require('../services/emailService');
-const { collectLowRoyalty, DEFAULT_THRESHOLD } = require('../services/lowRoyaltyReport');
+const { collectLowRoyaltyAll: collectLowRoyalty, DEFAULT_THRESHOLD } = require('../services/lowRoyaltyReport');
+const { REPORT_SUBJECT_BRANDS } = require('../services/companyReport');
 const { buildLowRoyaltyMailHtml, formatCurrency } = require('../services/lowRoyaltyMail');
 const { serverUrl } = require('../services/statementBuilder');
 
@@ -40,7 +41,7 @@ async function run() {
     await getTransporter().sendMail({
       from: process.env.EMAIL_FROM,
       to: TEST_RECIPIENT,
-      subject: `[TEST] MRM Low Royalty Report - ${dateStr} (${report.allTime.length} all time + ${report.lastYearOnly.length} more in the last 12 months, under ${formatCurrency(report.threshold)})`,
+      subject: `[TEST] ${REPORT_SUBJECT_BRANDS} Low Royalty Report - ${dateStr} (${report.allTime.length} all time + ${report.lastYearOnly.length} more in the last 12 months, under ${formatCurrency(report.threshold)})`,
       html,
     });
     console.log('Test email sent.');

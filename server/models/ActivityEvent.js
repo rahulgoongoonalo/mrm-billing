@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { companyModel } = require('../config/tenant');
 
 // One thing a person did in the app: saved, submitted or deleted a month,
 // changed the client master, opened a client, sent a mail, signed in.
@@ -53,5 +54,5 @@ activityEventSchema.index({ at: -1 });
 activityEventSchema.index({ userEmail: 1, at: -1 });
 activityEventSchema.index({ clientId: 1, at: -1 });
 
-module.exports = mongoose.model('ActivityEvent', activityEventSchema, 'activityEvents');
+module.exports = companyModel('ActivityEvent', activityEventSchema, 'activityEvents');
 module.exports.ACTIONS = ACTIONS;

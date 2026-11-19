@@ -2,7 +2,8 @@
 // Scheduled in index.js; this module owns the recipients and the send itself.
 
 const { getTransporter } = require('./emailService');
-const { collectLowRoyalty, DEFAULT_THRESHOLD } = require('./lowRoyaltyReport');
+const { collectLowRoyaltyAll: collectLowRoyalty, DEFAULT_THRESHOLD } = require('./lowRoyaltyReport');
+const { REPORT_SUBJECT_BRANDS } = require('./companyReport');
 const { buildLowRoyaltyMailHtml, formatCurrency } = require('./lowRoyaltyMail');
 
 const recipients = [
@@ -30,7 +31,7 @@ async function sendLowRoyaltyReport(threshold = DEFAULT_THRESHOLD) {
     await getTransporter().sendMail({
       from: process.env.EMAIL_FROM,
       to: recipients,
-      subject: `MRM Low Royalty Report - ${dateStr} (${report.allTime.length} all time + ${report.lastYearOnly.length} more in the last 12 months, under ${formatCurrency(report.threshold)})`,
+      subject: `${REPORT_SUBJECT_BRANDS} Low Royalty Report - ${dateStr} (${report.allTime.length} all time + ${report.lastYearOnly.length} more in the last 12 months, under ${formatCurrency(report.threshold)})`,
       html,
     });
 

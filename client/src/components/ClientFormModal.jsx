@@ -17,12 +17,13 @@ import {
   isValidJoiningDate,
   joiningMonthLabel,
 } from '../utils/clientProfile';
+import { COMPANY } from '../company';
 
 const OTHER_TYPE = '__other__';
 
 const idNumber = (id) => parseInt(String(id).match(/(\d+)/)?.[1], 10) || 0;
 
-const nextClientId = (clients) => `MRM-${clients.reduce((max, c) => Math.max(max, idNumber(c.clientId)), 0) + 1}`;
+const nextClientId = (clients) => `${COMPANY.idPrefix}-${clients.reduce((max, c) => Math.max(max, idNumber(c.clientId)), 0) + 1}`;
 
 function Field({ id, label, error, hint, wide, children }) {
   return (
@@ -64,7 +65,8 @@ function ClientFormModal({ client, onClose }) {
     phone: client?.phone || '',
     email: client?.email || '',
     gstId: client?.gstId || '',
-    paymentAccount: client?.paymentAccount || '',
+    // A client with no account saved pays into the company default (MRM: GST).
+    paymentAccount: COMPANY.paymentAccount || client?.paymentAccount || COMPANY.defaultPaymentAccount,
     joiningDate: client?.joiningDate || '',
   }));
   const [customType, setCustomType] = useState(false);
@@ -214,7 +216,7 @@ function ClientFormModal({ client, onClose }) {
                       value={form.clientId}
                       onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value.toUpperCase() }))}
                       onBlur={touch('clientId')}
-                      placeholder="MRM-250"
+                      placeholder={`${COMPANY.idPrefix}-250`}
                     />
                   </Field>
                 )}
@@ -419,14 +421,16 @@ function ClientFormModal({ client, onClose }) {
               <div className="cf-section-title">Payment account</div>
               <div className="cf-hint">The bank details printed on this client&rsquo;s statement.</div>
               <div className="cf-mode-row" role="radiogroup" aria-label="Payment account">
-                {PAYMENT_ACCOUNTS.map((a) => (
+                {/* A company with one fixed account (Kangabeats) shows just that one. */}
+                {PAYMENT_ACCOUNTS.filter((a) => !COMPANY.paymentAccount || a.key === COMPANY.paymentAccount).map((a) => (
                   <button
                     key={a.key}
                     type="button"
                     role="radio"
                     aria-checked={form.paymentAccount === a.key}
                     className={`cf-mode${form.paymentAccount === a.key ? ' on' : ''}`}
-                    onClick={() => setForm((f) => ({ ...f, paymentAccount: f.paymentAccount === a.key ? '' : a.key }))}
+                    disabled={!!COMPANY.paymentAccount}
+                    onClick={() => setForm((f) => ({ ...f, paymentAccount: a.key }))}
                   >
                     <strong>{a.label}</strong>
                     <span>{a.account}<br />{a.bank}</span>

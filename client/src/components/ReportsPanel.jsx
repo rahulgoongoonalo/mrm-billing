@@ -16,6 +16,7 @@ import {
   downloadCsv,
   SOCIETY_FIELDS as CLIENT_SOCIETY_FIELDS,
 } from '../utils/clientProfile';
+import { COMPANY } from '../company';
 
 // Column order on the reports: the original seven, then the societies added later.
 const REPORT_SOCIETIES = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'BMI', 'SOCAN', 'IMRO'];
@@ -520,7 +521,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, safeName || 'Client Report');
-    XLSX.writeFile(wb, `MRM_Client_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_FY${financialYear.startYear}-${financialYear.endYear}.xlsx`);
+    XLSX.writeFile(wb, `${COMPANY.badge}_Client_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_FY${financialYear.startYear}-${financialYear.endYear}.xlsx`);
   };
 
   // Helper to create a sheet with a title header
@@ -627,7 +628,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       XLSX.utils.book_append_sheet(wb, ws, 'Summary');
     }
 
-    XLSX.writeFile(wb, `MRM_Detailed_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+    XLSX.writeFile(wb, `${COMPANY.badge}_Detailed_Report_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
   };
 
   // ── IPRS Detail PDF Export ──
@@ -1304,7 +1305,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(150, 150, 150);
       doc.text(`Page ${i} of ${totalPages}`, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
-      doc.text('MRM Billing Report', 14, doc.internal.pageSize.getHeight() - 8);
+      doc.text(`${COMPANY.appName} Report`, 14, doc.internal.pageSize.getHeight() - 8);
     }
 
     const selectedNames = [];
@@ -1316,7 +1317,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
     if (sel.summary) selectedNames.push('Sum');
     const suffix = sectionCount === 6 ? 'Full' : selectedNames.join('_');
 
-    doc.save(`MRM_Report_${suffix}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
+    doc.save(`${COMPANY.badge}_Report_${suffix}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.pdf`);
     setShowExportModal(false);
   };
 
@@ -1331,7 +1332,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       `Commission: ${clientObj?.commissionRate || 0}% | Type: ${clientObj?.type || 'N/A'}`,
       headers, rows
     ), sheetName.substring(0, 31));
-    XLSX.writeFile(wb, `MRM_${sheetName.replace(/[^a-zA-Z0-9]/g, '_')}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
+    XLSX.writeFile(wb, `${COMPANY.badge}_${sheetName.replace(/[^a-zA-Z0-9]/g, '_')}_${clientName.replace(/[^a-zA-Z0-9]/g, '_')}_${fyLabel.replace(/\s/g, '')}.xlsx`);
   };
 
   const exportCSV = (reportType) => {
@@ -1340,7 +1341,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
 
     switch (reportType) {
       case 'client-master':
-        downloadCsv(buildClientMasterCsv(masterClients), 'MRM_Client_Master_Report.csv');
+        downloadCsv(buildClientMasterCsv(masterClients), `${COMPANY.badge}_Client_Master_Report.csv`);
         return;
 
       case 'commission':
@@ -1348,7 +1349,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         filteredEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${commissionsOf(e).join(',')},${e.totalCommission || 0}\n`;
         });
-        filename = `MRM_Commission_Report_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Commission_Report_${dateLabel}.csv`;
         break;
 
       case 'outstanding': {
@@ -1366,7 +1367,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
           .forEach(e => {
             csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.totalOutstanding || 0}\n`;
           });
-        filename = `MRM_Outstanding_Report_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Outstanding_Report_${dateLabel}.csv`;
         break;
       }
 
@@ -1375,7 +1376,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         filteredEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.gstRate || 18}%,${e.totalCommission || 0},${e.currentMonthGstBase || 0},${e.currentMonthGst || 0},${e.currentMonthInvoiceTotal || 0},${e.previousOutstandingGstBase || 0},${e.previousOutstandingGst || 0},${e.previousOutstandingInvoiceTotal || 0}\n`;
         });
-        filename = `MRM_GST_Invoice_Report_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_GST_Invoice_Report_${dateLabel}.csv`;
         break;
 
       case 'receipts-tds':
@@ -1383,7 +1384,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         filteredEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.totalCommission || 0},${e.currentMonthReceipt || 0},${e.currentMonthTds || 0},${e.previousMonthReceipt || 0},${e.previousMonthTds || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0}\n`;
         });
-        filename = `MRM_Receipts_TDS_Report_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Receipts_TDS_Report_${dateLabel}.csv`;
         break;
 
       default:
@@ -1424,28 +1425,28 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
         clientEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.commissionRate || 0}%,${commissionsOf(e).join(',')},${e.totalCommission || 0}\n`;
         });
-        filename = `MRM_Commission_${safeName}_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Commission_${safeName}_${dateLabel}.csv`;
         break;
       case 'outstanding':
         csv = 'Client ID,Client Name,Month,Year,Total Commission,Monthly Outstanding,Total Outstanding,Status\n';
         clientEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.totalCommission || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0},${e.status}\n`;
         });
-        filename = `MRM_Outstanding_${safeName}_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Outstanding_${safeName}_${dateLabel}.csv`;
         break;
       case 'gst-invoice':
         csv = 'Client ID,Client Name,Month,Year,GST Rate,Total Commission,Current GST Base,Current GST,Current Invoice Total,Prev Outstanding GST Base,Prev Outstanding GST,Prev Outstanding Invoice Total\n';
         clientEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.gstRate || 18}%,${e.totalCommission || 0},${e.currentMonthGstBase || 0},${e.currentMonthGst || 0},${e.currentMonthInvoiceTotal || 0},${e.previousOutstandingGstBase || 0},${e.previousOutstandingGst || 0},${e.previousOutstandingInvoiceTotal || 0}\n`;
         });
-        filename = `MRM_GST_Invoice_${safeName}_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_GST_Invoice_${safeName}_${dateLabel}.csv`;
         break;
       case 'receipts-tds':
         csv = 'Client ID,Client Name,Month,Year,Total Commission,Current Receipt,Current TDS,Previous Receipt,Previous TDS,Monthly Outstanding,Total Outstanding\n';
         clientEntries.forEach(e => {
           csv += `${e.clientId},"${e.clientName}","${monthLabels[e.month]}",${e.year},${e.totalCommission || 0},${e.currentMonthReceipt || 0},${e.currentMonthTds || 0},${e.previousMonthReceipt || 0},${e.previousMonthTds || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0}\n`;
         });
-        filename = `MRM_Receipts_TDS_${safeName}_${dateLabel}.csv`;
+        filename = `${COMPANY.badge}_Receipts_TDS_${safeName}_${dateLabel}.csv`;
         break;
       default:
         return;
@@ -1486,7 +1487,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
       <div className="reports-sidebar">
         <div className="reports-sidebar-header">
           <div className="logo-row">
-            <div className="logo-icon" style={{ width: 42, height: 42, fontSize: 16 }}>MRM</div>
+            <div className="logo-icon company-badge" data-company={COMPANY.key} style={{ width: 42, height: 42, fontSize: 16 }}>{COMPANY.badge}</div>
             <div>
               <h1 style={{ fontSize: 18 }}>Reports</h1>
               <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
@@ -1692,7 +1693,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                 </svg>
                 <input
                   type="search"
-                  placeholder="Search name, MRM ID, phone, email or GST ID"
+                  placeholder={`Search name, ${COMPANY.idPrefix} ID, phone, email or GST ID`}
                   value={masterSearch}
                   onChange={(e) => setMasterSearch(e.target.value)}
                   aria-label="Search clients"
@@ -2962,7 +2963,7 @@ function ReportsPanel({ onClose, embedded = false, activeReport: activeReportPro
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `MRM_Society_Contracts_${new Date().toISOString().split('T')[0]}.csv`;
+                  a.download = `${COMPANY.badge}_Society_Contracts_${new Date().toISOString().split('T')[0]}.csv`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }}

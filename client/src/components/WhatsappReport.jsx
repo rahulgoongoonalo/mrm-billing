@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { royaltyApi } from '../services/api';
 import { PAYMENT_ACCOUNTS } from '../utils/paymentAccounts';
+import { COMPANY, statementCompanyQuery } from '../company';
 
 const inr = (v) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
 const inr0 = (v) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.round(v || 0));
@@ -71,7 +72,7 @@ function WhatsappReport() {
 
   const whatsappText = useMemo(() => {
     const lines = [
-      '*MRM Outstanding Report*',
+      `*${COMPANY.brand} Outstanding Report*`,
       `_${data?.dateLabel || ''}_`,
       '',
       `Receivable: *${rupees(shown.receivable)}*`,
@@ -98,14 +99,14 @@ function WhatsappReport() {
   };
 
   const exportCSV = () => {
-    const head = ['#', 'MRM ID', 'Client', 'Months', 'Outstanding'];
+    const head = ['#', `${COMPANY.idPrefix} ID`, 'Client', 'Months', 'Outstanding'];
     const body = rows.map((r, i) => [
       i + 1, r.clientId, `"${(r.clientName || '').replace(/"/g, '""')}"`, r.month, r.outstanding || 0,
     ].join(','));
     const url = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'MRM_Whatsapp_Report.csv';
+    a.download = `${COMPANY.badge}_Whatsapp_Report.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -117,7 +118,8 @@ function WhatsappReport() {
 
   const years = useMemo(() => {
     const list = [];
-    for (let y = currentFy; y >= 2025; y--) list.push(y);
+    // FY 2024-25 is the earliest year with entries (back-filled for a few clients).
+    for (let y = currentFy; y >= 2024; y--) list.push(y);
     return list;
   }, [currentFy]);
 
@@ -156,7 +158,7 @@ function WhatsappReport() {
   const openPicked = () => {
     if (!picker) return;
     const { client, kind } = picker;
-    const out = `${client.statementBase}/outstanding?t=${client.statementToken}`;
+    const out = `${client.statementBase}/outstanding?t=${client.statementToken}${statementCompanyQuery}`;
     const url = kind === 'period'
       ? `${out}&mode=period&from=${pFrom}&to=${pTo}`
       : `${out}&mode=year&year=${pYear}`;
@@ -203,7 +205,7 @@ function WhatsappReport() {
       ) : (
         <div className="wa-sheet">
           <div className="wa-sheet-head">
-            <div className="wa-eyebrow">Music Rights Management</div>
+            <div className="wa-eyebrow">{COMPANY.name}</div>
             <h3>Outstanding Report</h3>
             <p>{data?.dateLabel} — every client, latest month only, highest first.</p>
           </div>
@@ -250,7 +252,7 @@ function WhatsappReport() {
             <div className="wa-filters">
               <div className="report-client-search">
                 <Icon size={14}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></Icon>
-                <input type="text" placeholder="Search by name or MRM ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input type="text" placeholder={`Search by name or ${COMPANY.idPrefix} ID...`} value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
             </div>
 
@@ -281,7 +283,7 @@ function WhatsappReport() {
                         <td className="r">
                           <div className="wa-links">
                             {[['outstanding', 'Balance build-up'], ['full', 'Full record']].map(([view, text]) => {
-                              const url = `${r.statementBase}/${view}?t=${r.statementToken}`;
+                              const url = `${r.statementBase}/${view}?t=${r.statementToken}${statementCompanyQuery}`;
                               return (
                                 <a key={view} href={url} target="_blank" rel="noreferrer"
                                   onClick={(e) => { if (!r.paymentAccount) { e.preventDefault(); openStatement(r, url); } }}>

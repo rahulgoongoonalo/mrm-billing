@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { currentCompany } = require('../config/tenant');
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
 const ReferralDeal = require('../models/ReferralDeal');
@@ -38,6 +39,10 @@ function applyProfileFields(client, body) {
   if (email !== undefined) client.email = email;
   if (gstId !== undefined) client.gstId = gstId;
   if (paymentAccount !== undefined) client.paymentAccount = paymentAccount || '';
+  // A company with one fixed account (Kangabeats: Without GST) stores it on
+  // every client, whatever was sent.
+  const fixedAccount = currentCompany().paymentAccount;
+  if (fixedAccount) client.paymentAccount = fixedAccount;
   if (commissionMode !== undefined) client.commissionMode = commissionMode;
   if (societyCommissions !== undefined) {
     client.societyCommissions = Array.isArray(societyCommissions) ? societyCommissions : [];

@@ -3,6 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import { buildClientMasterCsv, downloadCsv, SOCIETY_FIELDS } from '../utils/clientProfile';
 import { MONTH_LABELS } from '../utils/format';
 import Icon from './Icon';
+import { COMPANY } from '../company';
 
 // Export column order: the original seven, then the societies added later.
 const EXPORT_SOCIETIES = ['IPRS', 'PRS', 'Sound Exchange', 'ISAMRA', 'ASCAP', 'PPL', 'MLC', 'BMI', 'SOCAN', 'IMRO'];
@@ -20,12 +21,12 @@ function ExportPage() {
       csv += `${e.clientId},"${e.clientName}","${MONTH_LABELS[e.month]}",${e.year},${e.commissionRate || 0}%,${EXPORT_SOCIETIES.map((s) => e[SOCIETY_FIELDS[s].amount] || 0).join(',')},${e.totalCommission || 0},${e.monthlyOutstanding || 0},${e.totalOutstanding || 0},${e.status}\n`;
     });
 
-    downloadCsv(csv, `MRM_Royalty_Accounting_Export_${today}.csv`);
+    downloadCsv(csv, `${COMPANY.badge}_Royalty_Accounting_Export_${today}.csv`);
     showToast('Data exported successfully!');
   };
 
   const exportClients = () => {
-    downloadCsv(buildClientMasterCsv(clients), `MRM_Clients_Export_${today}.csv`);
+    downloadCsv(buildClientMasterCsv(clients), `${COMPANY.badge}_Clients_Export_${today}.csv`);
     showToast('Clients exported successfully!');
   };
 

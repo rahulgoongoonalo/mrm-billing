@@ -1,3 +1,5 @@
+const { currentCompany } = require('../config/tenant');
+
 // The two bank accounts a client can be asked to pay into. Which one applies is
 // set per client (Client.paymentAccount) and printed on their statement.
 
@@ -29,4 +31,15 @@ const PAYMENT_ACCOUNTS = {
 
 const PAYMENT_ACCOUNT_KEYS = Object.keys(PAYMENT_ACCOUNTS);
 
-module.exports = { PAYMENT_ACCOUNTS, PAYMENT_ACCOUNT_KEYS };
+// The account a client actually pays into, in the current company:
+//   - a company with one fixed account (Kangabeats: Without GST) always uses it
+//   - otherwise the client's own choice, or the company default (MRM: With GST)
+// Always returns a valid key, so a statement never has to ask the client.
+function effectivePaymentAccount(client) {
+  const company = currentCompany();
+  if (company.paymentAccount) return company.paymentAccount;
+  const own = client && client.paymentAccount;
+  return PAYMENT_ACCOUNTS[own] ? own : company.defaultPaymentAccount;
+}
+
+module.exports = { PAYMENT_ACCOUNTS, PAYMENT_ACCOUNT_KEYS, effectivePaymentAccount };

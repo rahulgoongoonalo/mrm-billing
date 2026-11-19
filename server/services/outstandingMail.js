@@ -4,6 +4,7 @@
 
 const { calOrder, longLabel, shortLabel, statementUrl } = require('./statementBuilder');
 const { version: APP_VERSION } = require('../package.json');
+const { REPORT_COMPANIES, companyTag } = require('./companyReport');
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -58,7 +59,25 @@ function newClientsThisMonth(clients, now = new Date()) {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new Date() }) {
+// companies: one { name, clients, owing, receivable } per company when the
+// report covers several (collectOutstandingAll); rows then carry their company.
+// "By company" table under the KPIs: each company's receivable and clients.
+function companySplit(companies) {
+  const cell = 'padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12.5px;';
+  const head = 'padding:8px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#5a6474;background:#f4f7fc;border-bottom:1px solid #e3e8f0;';
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e3e8f0;border-radius:8px;overflow:hidden;margin:4px 0 0;">
+      <tr><th style="${head}text-align:left;">By company</th><th style="${head}text-align:right;">Clients</th><th style="${head}text-align:right;">Owing</th><th style="${head}text-align:right;">Receivable</th></tr>
+      ${companies.map((c) => `<tr>
+        <td style="${cell}font-weight:600;color:#1F3864;">${esc(c.name)}</td>
+        <td style="${cell}text-align:right;color:#5a6474;">${c.clients}</td>
+        <td style="${cell}text-align:right;color:#5a6474;">${c.owing}</td>
+        <td style="${cell}text-align:right;font-weight:700;color:#1F3864;white-space:nowrap;">${formatCurrency(c.receivable)}</td>
+      </tr>`).join('')}
+    </table>`;
+}
+
+function buildOutstandingMailHtml({ rows, totals, newClients, companies, isTest, now = new Date() }) {
   const dateStr = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
   const monthStr = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
@@ -83,7 +102,7 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
 
   const newClientRows = newClients.map((c) => `
     <tr>
-      <td style="padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12.5px;font-weight:600;color:#1F3864;white-space:nowrap;">${esc(c.clientId)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12.5px;font-weight:600;color:#1F3864;white-space:nowrap;">${esc(c.clientId)}${c.company ? companyTag(c.company) : ''}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12.5px;color:#374151;">${esc(c.name)}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12px;color:#6b7280;">${esc(c.type || '')}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #eef1f6;font-size:12px;color:#6b7280;text-align:right;white-space:nowrap;">${esc(c.commissionRate)}%</td>
@@ -115,13 +134,13 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:11.5px;color:#a6adba;">${i + 1}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:12.5px;line-height:1.4;">
         <div style="font-weight:600;color:#1F3864;">${esc(r.clientName)}</div>
-        <div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#2E6DA4;margin-top:2px;">${esc(r.clientId)}</div>
+        <div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#2E6DA4;margin-top:2px;">${esc(r.clientId)}${r.company ? companyTag(r.company) : ''}</div>
       </td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;font-size:11.5px;color:#8a93a3;white-space:nowrap;">${esc(r.month)}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;color:${r.outstanding > 0 ? '#1F3864' : r.outstanding <= -1 ? '#B01414' : '#1F6B24'};">${formatNumber(r.outstanding)}</td>
       <td style="padding:10px;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;">
-        <a href="${esc(statementUrl(r.clientId, 'outstanding'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;">Balance build-up</a>
-        <a href="${esc(statementUrl(r.clientId, 'full'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;margin-left:5px;">Full record</a>
+        <a href="${esc(r.links ? r.links.outstanding : statementUrl(r.clientId, 'outstanding'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;">Balance build-up</a>
+        <a href="${esc(r.links ? r.links.full : statementUrl(r.clientId, 'full'))}" style="display:inline-block;text-decoration:none;font-size:11px;font-weight:600;color:#1F3864;border:1px solid #cfd8e6;border-radius:6px;padding:5px 9px;background:#f6f9fd;margin-left:5px;">Full record</a>
       </td>
     </tr>`).join('');
 
@@ -132,7 +151,7 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:900px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.09),0 10px 32px rgba(16,24,40,.06);">
   ${testBanner}
   <tr><td style="padding:24px 26px 18px;border-bottom:1px solid #e6eaf0;">
-    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8a93a3;font-weight:600;">Music Rights Management</div>
+    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8a93a3;font-weight:600;">${companies ? REPORT_COMPANIES : 'Music Rights Management'}</div>
     <div style="font-size:22px;font-weight:700;color:#1F3864;margin-top:3px;letter-spacing:-.3px;">Outstanding Report</div>
     <div style="font-size:12.5px;color:#5a6474;margin-top:3px;">${esc(dateStr)} &mdash; every client, latest month only, highest first.</div>
   </td></tr>
@@ -150,6 +169,7 @@ function buildOutstandingMailHtml({ rows, totals, newClients, isTest, now = new 
         ${kpi('Overpaid', String(overpaid.length), '#B01414')}
       </tr>
     </table>
+    ${companies ? companySplit(companies) : ''}
   </td></tr>
 
   <tr><td>${newClientsBlock}</td></tr>

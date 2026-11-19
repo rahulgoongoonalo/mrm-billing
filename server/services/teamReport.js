@@ -11,6 +11,8 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 const { monthShort, calOrder } = require('./statementBuilder');
+const { eachCompany } = require('../config/tenant');
+const { REPORT_COMPANIES, companyTag } = require('./companyReport');
 
 const TZ = 'Asia/Kolkata';
 
@@ -100,16 +102,21 @@ function workingTime(times) {
  */
 async function collectPersonDay(user, dateStr) {
   const [start, end] = istDay(dateStr);
-  const events = await ActivityEvent.find({ userEmail: user.email, at: { $gte: start, $lt: end } })
-    .sort({ at: 1 }).lean();
+  // Work in every company counts; each event remembers which one it was in.
+  const events = (await eachCompany(async (company) => (await ActivityEvent.find({ userEmail: user.email, at: { $gte: start, $lt: end } })
+    .sort({ at: 1 }).lean()).map((ev) => ({ ...ev, company }))))
+    .flat()
+    .sort((a, b) => new Date(a.at) - new Date(b.at));
+  // A client is told apart by company as well as ID.
+  const ck = (x) => `${x.company}|${x.clientId}`;
 
   // Entry work, grouped by client-month.
   const months = new Map();
   for (const ev of events) {
     if (!ev.action.startsWith('entry.')) continue;
-    const key = `${ev.clientId}|${ev.month}|${ev.year}`;
+    const key = `${ck(ev)}|${ev.month}|${ev.year}`;
     if (!months.has(key)) {
-      months.set(key, { clientId: ev.clientId, clientName: ev.clientName, month: ev.month, year: ev.year, events: [] });
+      months.set(key, { company: ev.company, clientId: ev.clientId, clientName: ev.clientName, month: ev.month, year: ev.year, events: [] });
     }
     months.get(key).events.push(ev);
   }
@@ -125,7 +132,7 @@ async function collectPersonDay(user, dateStr) {
     const net = netChanges(m.events);
     const last = m.events[m.events.length - 1];
     const label = monthLabel(m.month, m.year);
-    const base = { clientId: m.clientId, clientName: m.clientName, month: m.month, year: m.year, label };
+    const base = { company: m.company, clientId: m.clientId, clientName: m.clientName, month: m.month, year: m.year, label };
     if (m.events.some((e) => e.action === 'entry.created')) created += 1;
 
     if (last.action === 'entry.deleted') {
@@ -179,14 +186,14 @@ async function collectPersonDay(user, dateStr) {
   const failedMails = [];
   for (const e of mails) {
     const meta = e.meta || {};
-    const row = { clientId: e.clientId, clientName: e.clientName, month: e.month, year: e.year, label: monthLabel(e.month, e.year), at: e.at, to: meta.to || '', type: meta.mailType || '' };
+    const row = { company: e.company, clientId: e.clientId, clientName: e.clientName, month: e.month, year: e.year, label: monthLabel(e.month, e.year), at: e.at, to: meta.to || '', type: meta.mailType || '' };
     if (e.action === 'mail.failed') failedMails.push({ ...row, error: meta.error || '' });
     else if (meta.isTest) testMails.push(row);
-    else sentByMonth.set(`${e.clientId}|${e.month}|${e.year}`, row);
+    else sentByMonth.set(`${ck(e)}|${e.month}|${e.year}`, row);
   }
   const emailed = [...sentByMonth.values()];
   for (const v of verified) {
-    const mail = sentByMonth.get(`${v.clientId}|${v.month}|${v.year}`);
+    const mail = sentByMonth.get(`${ck(v)}|${v.month}|${v.year}`);
     v.mailedAt = mail ? mail.at : null;
     v.mailedTo = mail ? mail.to : '';
   }
@@ -195,40 +202,49 @@ async function collectPersonDay(user, dateStr) {
   const clientEdits = new Map();
   for (const e of events) {
     if (!e.action.startsWith('client.') || e.action === 'client.viewed') continue;
-    const row = clientEdits.get(e.clientId) || { clientId: e.clientId, clientName: e.clientName, fields: new Set(), actions: new Set() };
+    const row = clientEdits.get(ck(e)) || { company: e.company, clientId: e.clientId, clientName: e.clientName, fields: new Set(), actions: new Set() };
     row.actions.add(e.action.split('.')[1]);
     for (const c of e.changes || []) row.fields.add(c.label);
-    clientEdits.set(e.clientId, row);
+    clientEdits.set(ck(e), row);
   }
 
   // The months as they stand now, for every month saved today and not deleted.
   const savedKeys = [...months.values()].filter((m) => m.events[m.events.length - 1].action !== 'entry.deleted');
-  const savedEntries = savedKeys.length
-    ? await RoyaltyAccounting.find({ $or: savedKeys.map((m) => ({ clientId: m.clientId, month: m.month, year: m.year })) }).lean()
-    : [];
+  const savedEntries = (await eachCompany(async (company) => {
+    const mine = savedKeys.filter((m) => m.company === company);
+    return mine.length
+      ? (await RoyaltyAccounting.find({ $or: mine.map((m) => ({ clientId: m.clientId, month: m.month, year: m.year })) }).lean())
+        .map((e) => ({ ...e, company }))
+      : [];
+  })).flat();
   const stillDraft = savedEntries.filter((e) => e.status === 'draft');
 
   const clientsTouched = new Set([
-    ...[...months.values()].map((m) => m.clientId),
+    ...[...months.values()].map(ck),
     ...clientEdits.keys(),
-    ...emailed.map((e) => e.clientId),
+    ...emailed.map(ck),
   ]);
 
   // Society by society, every month saved today: entered with revenue, or
   // entered as 0. A month counts for a society the client is signed to, or
   // one it has an amount for.
-  const signed = new Map((await Client.find({ clientId: { $in: [...new Set(savedEntries.map((e) => e.clientId))] } })
-    .select('clientId societies').lean()).map((c) => [c.clientId, new Set(c.societies || [])]));
+  const signed = new Map((await eachCompany(async (company) => {
+    const ids = [...new Set(savedEntries.filter((e) => e.company === company).map((e) => e.clientId))];
+    return ids.length
+      ? (await Client.find({ clientId: { $in: ids } }).select('clientId societies').lean())
+        .map((c) => [ck({ company, clientId: c.clientId }), new Set(c.societies || [])])
+      : [];
+  })).flat());
   const bySociety = SOCIETIES.map((society) => {
     const field = SOCIETY_FIELDS[society].amount;
-    const rows = savedEntries.filter((e) => (signed.get(e.clientId) || new Set()).has(society) || round2(e[field]) !== 0);
+    const rows = savedEntries.filter((e) => (signed.get(ck(e)) || new Set()).has(society) || round2(e[field]) !== 0);
     const zero = rows.filter((e) => round2(e[field]) === 0);
     return {
       society,
       entries: rows.length,
       withRevenue: rows.length - zero.length,
       zero: zero.length,
-      clients: new Set(rows.map((e) => e.clientId)).size,
+      clients: new Set(rows.map(ck)).size,
     };
   });
 
@@ -302,7 +318,7 @@ const C = {
 
 const th = (label, align = 'left') => `<th style="padding:8px 10px;text-align:${align};font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:${C.soft};background:${C.head};border-bottom:1px solid ${C.line};white-space:nowrap;">${label}</th>`;
 const td = (html, extra = '') => `<td style="padding:8px 10px;border-bottom:1px solid ${C.row};font-size:12.5px;color:#374151;vertical-align:top;${extra}">${html}</td>`;
-const clientCell = (r) => td(`<div style="font-weight:600;color:${C.navy};">${esc(r.clientName || r.clientId)}</div><div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${C.blue};margin-top:1px;">${esc(r.clientId)}</div>`);
+const clientCell = (r) => td(`<div style="font-weight:600;color:${C.navy};">${esc(r.clientName || r.clientId)}</div><div style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:${C.blue};margin-top:1px;">${esc(r.clientId)}${r.company ? companyTag(r.company) : ''}</div>`);
 const table = (head, rows) => `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid ${C.line};border-radius:8px;overflow:hidden;">${head}${rows}</table>`;
 const empty = (text) => `<div style="font-size:12px;color:${C.muted};padding:11px 13px;border:1px dashed #dbe2ec;border-radius:8px;background:${C.zebra};">${text}</div>`;
 
@@ -471,7 +487,7 @@ function buildTeamReportHtml(d, { isTest = false } = {}) {
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:760px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.09),0 10px 32px rgba(16,24,40,.06);">
   ${testBanner}
   <tr><td style="padding:24px 26px 18px;border-bottom:1px solid #e6eaf0;">
-    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:${C.muted};font-weight:600;">Music Rights Management &middot; Daily work report</div>
+    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:${C.muted};font-weight:600;">${REPORT_COMPANIES} &middot; Daily work report</div>
     <div style="font-size:22px;font-weight:700;color:${C.navy};margin-top:3px;letter-spacing:-.3px;">${esc(d.user.name)}</div>
     <div style="font-size:12.5px;color:${C.soft};margin-top:3px;">${esc(dayLong)} &middot; ${esc(d.user.email)}</div>
     <div style="font-size:13px;color:${noWork ? C.red : C.navy};margin-top:10px;font-weight:600;">${headline}</div>
@@ -514,9 +530,11 @@ const addDays = (dateStr, n) => {
 const weekStartOf = (dateStr) => addDays(dateStr, -((new Date(`${dateStr}T12:00:00Z`).getUTCDay() + 6) % 7));
 const isSunday = (dateStr) => new Date(`${dateStr}T12:00:00Z`).getUTCDay() === 0;
 
+// The earliest activity recorded in any company.
 async function trackingStart() {
-  const first = await ActivityEvent.findOne({}).sort({ at: 1 }).select('at').lean();
-  return first ? new Date(first.at) : null;
+  const firsts = (await eachCompany(() => ActivityEvent.findOne({}).sort({ at: 1 }).select('at').lean()))
+    .filter(Boolean).map((f) => new Date(f.at).getTime());
+  return firsts.length ? new Date(Math.min(...firsts)) : null;
 }
 
 const sumOver = (get) => (days) => days.reduce((s, d) => s + get(d), 0);
@@ -673,7 +691,7 @@ function buildWeeklyReportHtml(w, prev, { isTest = false, now = new Date() } = {
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:760px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.09),0 10px 32px rgba(16,24,40,.06);">
   ${testBanner}
   <tr><td style="padding:24px 26px 18px;border-bottom:1px solid #e6eaf0;">
-    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:${C.muted};font-weight:600;">Music Rights Management &middot; Weekly work tracker</div>
+    <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:${C.muted};font-weight:600;">${REPORT_COMPANIES} &middot; Weekly work tracker</div>
     <div style="font-size:22px;font-weight:700;color:${C.navy};margin-top:3px;letter-spacing:-.3px;">Team week ${weekRange(w)}</div>
     <div style="font-size:12.5px;color:${C.soft};margin-top:3px;">${w.complete ? 'Monday to Sunday' : `Week so far, up to ${esc(shortDay(today, { weekday: 'long', day: 'numeric', month: 'short' }))}`} &middot; ${esc(names.join(', '))}</div>
   </td></tr>

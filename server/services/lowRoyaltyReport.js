@@ -7,7 +7,9 @@
 
 const Client = require('../models/Client');
 const RoyaltyAccounting = require('../models/RoyaltyAccounting');
-const { calOrder, shortLabel, longLabel } = require('./statementBuilder');
+const { calOrder, shortLabel, longLabel, statementUrl } = require('./statementBuilder');
+const { eachCompany } = require('../config/tenant');
+const { COMPANY_KEYS } = require('../config/companies');
 const { SOCIETIES, SOCIETY_FIELDS } = require('../utils/clientProfile');
 
 // Derived from the shared society map so a new society is counted here too.
@@ -24,10 +26,42 @@ const WINDOW_MONTHS = 12;
  * @returns { threshold, window, allTime, lastYear, reviewed, noEntries }
  */
 async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
+  const { clients, entries } = await loadCompany();
+  return lowRoyaltyOf(clients, entries, threshold);
+}
+
+// The active clients of the current company and their entries.
+async function loadCompany(company) {
   const clients = await Client.find({ isActive: { $ne: false } })
     .select('clientId name type commissionRate').lean();
   const activeIds = new Set(clients.map((c) => c.clientId));
   const entries = (await RoyaltyAccounting.find({}).lean()).filter((e) => activeIds.has(e.clientId));
+  if (company) {
+    for (const c of clients) c.company = company;
+    for (const e of entries) e.company = company;
+  }
+  return { clients, entries };
+}
+
+/**
+ * Every company in one report: each row names its company and carries its
+ * statement link. The 12-month window runs to the newest month in any company.
+ */
+async function collectLowRoyaltyAll(threshold = DEFAULT_THRESHOLD) {
+  const parts = await eachCompany(async (company) => {
+    const { clients, entries } = await loadCompany(company);
+    const link = new Map(clients.map((c) => [c.clientId, statementUrl(c.clientId, 'full')]));
+    return { clients, entries, link };
+  });
+  const report = lowRoyaltyOf(parts.flatMap((p) => p.clients), parts.flatMap((p) => p.entries), threshold);
+  const linkOf = (r) => parts[COMPANY_KEYS.indexOf(r.company)].link.get(r.clientId);
+  for (const r of [...report.allTime, ...report.lastYear]) r.link = linkOf(r);
+  return report;
+}
+
+// Clients (and entries) may come from several companies, told apart by .company.
+function lowRoyaltyOf(clients, entries, threshold) {
+  const keyOf = (x) => `${x.company || ''}|${x.clientId}`;
 
   // The window is anchored to the newest month anyone has, not today's date, so
   // the report stays stable if data entry runs behind.
@@ -43,8 +77,8 @@ async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
 
   const byClient = new Map();
   for (const e of entries) {
-    if (!byClient.has(e.clientId)) byClient.set(e.clientId, []);
-    byClient.get(e.clientId).push(e);
+    if (!byClient.has(keyOf(e))) byClient.set(keyOf(e), []);
+    byClient.get(keyOf(e)).push(e);
   }
 
   const allTime = [];
@@ -52,7 +86,7 @@ async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
   let noEntries = 0;
 
   for (const c of clients) {
-    const list = (byClient.get(c.clientId) || []).sort((a, b) => calOrder(a) - calOrder(b));
+    const list = (byClient.get(keyOf(c)) || []).sort((a, b) => calOrder(a) - calOrder(b));
     const inWindow = windowFrom === null ? [] : list.filter((e) => calOrder(e) >= windowFrom);
 
     const totalAll = r2(list.reduce((s, e) => s + royaltyOf(e), 0));
@@ -62,6 +96,7 @@ async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
     if (!list.length) noEntries++;
 
     const base = {
+      ...(c.company ? { company: c.company } : {}),
       clientId: c.clientId,
       clientName: c.name,
       clientType: c.type || '',
@@ -86,8 +121,8 @@ async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
 
   // A client low all time is necessarily low over the last year too, so the
   // second list carries only the ones the first has not already named.
-  const alreadyListed = new Set(allTime.map((r) => r.clientId));
-  const lastYearOnly = lastYear.filter((r) => !alreadyListed.has(r.clientId));
+  const alreadyListed = new Set(allTime.map(keyOf));
+  const lastYearOnly = lastYear.filter((r) => !alreadyListed.has(keyOf(r)));
 
   return {
     threshold,
@@ -104,4 +139,4 @@ async function collectLowRoyalty(threshold = DEFAULT_THRESHOLD) {
   };
 }
 
-module.exports = { collectLowRoyalty, royaltyOf, ROYALTY_FIELDS, DEFAULT_THRESHOLD };
+module.exports = { collectLowRoyalty, collectLowRoyaltyAll, royaltyOf, ROYALTY_FIELDS, DEFAULT_THRESHOLD };

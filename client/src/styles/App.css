@@ -2021,3 +2021,82 @@ button.act-field.picked { border-color: var(--accent-blue); background: rgba(0, 
   .modal-overlay.rf-overlay { padding: 0; }
   .modal.rf-modal, .modal.rf-modal.wide { max-height: 100vh; height: 100%; border-radius: 0; }
 }
+
+/* ── Company switcher (MRM / Kangabeats portals) ─────────────────────────── */
+/* Each company's badge has its own colour so the portal in use is obvious. */
+.company-badge[data-company="kangabeats"],
+[data-company="kangabeats"] .company-switch-btn .company-badge,
+.company-pop-opt[data-company="kangabeats"] .company-badge {
+  background: linear-gradient(135deg, #f0a040 0%, #e8467c 100%);
+  box-shadow: 0 4px 24px rgba(232, 70, 124, 0.3);
+}
+.company-pop-opt[data-company="mrm"] .company-badge {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+  box-shadow: 0 4px 24px rgba(0, 176, 240, 0.3);
+}
+
+.company-switch { position: relative; flex: 1; min-width: 0; }
+.company-switch-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0;
+  margin: -6px; padding: 6px; background: none; border: 1px solid transparent; border-radius: 12px;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.company-switch-btn:hover, .company-switch-btn.is-open { background: var(--bg-card); border-color: var(--border-color); }
+.company-switch-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.company-switch-btn .sidebar-brand { flex: 1; }
+.company-switch-btn .sidebar-brand strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.company-switch-chev { flex-shrink: 0; color: var(--text-secondary); transition: transform 0.2s ease; }
+.company-switch-btn.is-open .company-switch-chev { transform: rotate(180deg); }
+
+.company-pop {
+  position: absolute; top: calc(100% + 10px); left: -6px; z-index: 60; width: 264px; max-width: calc(100vw - 32px);
+  padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border-accent); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+.company-pop-head { padding: 6px 10px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); }
+.company-pop-opt {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; background: none; border: 0; border-radius: 10px;
+  color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
+}
+.company-pop-opt:hover { background: var(--bg-card); }
+.company-pop-opt.is-current { background: var(--bg-input); }
+.company-pop-opt > svg { color: var(--accent-green); flex-shrink: 0; }
+.company-pop-badge { width: 32px; height: 32px; font-size: 12px; border-radius: 9px; }
+.company-pop-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.3; }
+.company-pop-text b { font-size: 13px; font-weight: 600; }
+.company-pop-text small { font-size: 11px; color: var(--text-secondary); }
+.company-pop-note { margin: 6px 10px 4px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 11px; line-height: 1.45; color: var(--text-muted); }
+
+/* Company logos in the switcher: each sits on a white tile (both logos are
+   drawn for a light background). Kangabeats' logo is square; MRM's mark is
+   wide, so its tile grows sideways. */
+.company-mark {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  height: 32px; min-width: 32px; padding: 0 7px; background: #fff; border-radius: 9px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); overflow: hidden;
+}
+.company-mark img { display: block; height: 52%; width: auto; }
+.company-mark[data-company="kangabeats"] { width: 32px; padding: 1px; }
+.company-mark[data-company="kangabeats"] img { height: 100%; width: 100%; object-fit: contain; }
+.company-mark-lg { height: 38px; min-width: 38px; border-radius: 10px; }
+.company-mark-lg[data-company="kangabeats"] { width: 38px; }
+
+/* Login screen: which portal to sign in to. */
+.company-toggle {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin: -8px 0 24px; padding: 4px;
+  background: var(--lg-input); border: 1px solid var(--lg-border); border-radius: 12px;
+}
+.company-toggle-opt {
+  padding: 8px 10px; background: none; border: 0; border-radius: 9px; color: var(--lg-muted);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+}
+.company-toggle-opt:hover { color: var(--lg-text); }
+.company-toggle-opt.is-current { background: #fff; color: var(--lg-text); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12); }
+.company-toggle-opt:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.login-wordmark {
+  margin: 0 auto 28px; text-align: center; font-size: 30px; font-weight: 700; letter-spacing: -0.6px;
+  background: linear-gradient(135deg, #f0a040 0%, #e8467c 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.cf-mode:disabled { cursor: default; }
+/* Kangabeats' logo is upright: keep it compact on the login card. */
+[data-company="kangabeats"] .login-logo { width: auto; height: 124px; margin-bottom: 22px; }
